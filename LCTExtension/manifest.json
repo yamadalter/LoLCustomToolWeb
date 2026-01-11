@@ -4,9 +4,7 @@
   "version": "1.0",
   "permissions": ["scripting"],
   "host_permissions": [
-    "https://yamadalter.github.io/LOLCustomTool",
-    "https://127.0.0.1/*",
-    "http://localhost:*/*"
+    "https://*/*" 
   ],
   "background": {
     "service_worker": "background.js"
@@ -14,7 +12,7 @@
   "content_scripts": [
     {
       "matches": [
-        "http://localhost:*/*",
+        "http://localhost:5173/*", 
         "https://yamadalter.github.io/LOLCustomTool/*"
       ],
       "js": ["content_script.js"]
@@ -24,4 +22,3 @@
     "128": "icon.png"
   }
 }
-

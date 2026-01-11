@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Users, 
   UserPlus, 
@@ -17,11 +17,12 @@ import {
   Terminal,
   FileSearch,
   MapPin,
-  Gamepad2
+  Gamepad2,
+  Bug
 } from 'lucide-react';
 
 // --- Constants ---
-const VERSION = 'v1.4.0-web';
+const VERSION = 'v1.4.1-web-debug';
 const ROLES = ['top', 'jg', 'mid', 'bot', 'sup'];
 
 const RANK_DATA = [
@@ -72,6 +73,22 @@ export default function App() {
   const [dirHandle, setDirHandle] = useState(null);
   const [pathDisplay, setPathDisplay] = useState('C:\\Riot Games\\League of Legends');
   const [isLoadingLobby, setIsLoadingLobby] = useState(false);
+  
+  // Debug State
+  const [showDebug, setShowDebug] = useState(false);
+  const [logs, setLogs] = useState([]);
+  const logsEndRef = useRef(null);
+
+  const addLog = (type, message, data = null) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setLogs(prev => [...prev, { timestamp, type, message, data: data ? JSON.stringify(data) : null }]);
+  };
+
+  useEffect(() => {
+    if (showDebug && logsEndRef.current) {
+      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [logs, showDebug]);
 
   // Persistence
   useEffect(() => {
@@ -92,31 +109,49 @@ export default function App() {
   // 拡張機能からのメッセージを待受
   useEffect(() => {
     const handleMessage = (event) => {
+      // セキュリティのためオリジンチェックを入れるのが望ましいが、拡張機能の場合は要検証
+      // if (event.origin !== window.location.origin) return;
+      if (event.data && (event.data.type === 'LCU_LOBBY_DATA_RESPONSE' || event.data.type === 'LCU_ERROR')) {
+        addLog('RECEIVE', `メッセージを受信しました: ${event.data.type}`, event.data);
+      }
+
       // 自分のウィンドウからのメッセージのみを処理（拡張機能のコンテンツスクリプト経由）
-      if (event.data && event.data.type === 'LCU_LOBBY_DATA_RESPONSE') {
-        setIsLoadingLobby(false);
-        if (event.data.success && event.data.players) {
-          const newPlayers = event.data.players.map(p => ({
-            id: Math.random() + Date.now(),
-            name: p.name,
-            tag: p.tag || 'JP1',
-            ...ROLES.reduce((acc, role) => ({
-              ...acc,
-              [`${role}_rank`]: p.rank || 'UNRANKED',
-              [role]: true
-            }), {})
-          }));
-          
-          setPlayers(prev => {
-            // 重複チェック
-            const existingNames = new Set(prev.map(p => p.name));
-            const filteredNew = newPlayers.filter(p => !existingNames.has(p.name));
-            return [...prev, ...filteredNew];
-          });
-          setStatusMsg(`${newPlayers.length}人のプレイヤーを読み込みました。`);
-          setTimeout(() => setStatusMsg(''), 3000);
-        } else {
-          alert(event.data.error || 'ロビー情報の取得に失敗しました。');
+              if (event.data && event.data.type === 'LCU_LOBBY_DATA_RESPONSE') {
+              setIsLoadingLobby(false);
+              if (event.data.success && event.data.data) {
+                const newPlayers = event.data.data.map(p => {
+                  let rank = 'UNRANKED';
+                  if (p.tier && p.tier.toUpperCase() !== 'UNRANKED') {
+                    const tier = p.tier.toUpperCase();
+                    const division = p.division ? p.division.toUpperCase() : '';
+                    // MASTER, GRANDMASTER, CHALLENGERの場合はDivisionを含めない
+                    rank = ['MASTER', 'GRANDMASTER', 'CHALLENGER'].includes(tier) ? tier : `${tier} ${division}`.trim();
+                  }
+                  return {
+                    id: Math.random() + Date.now(),
+                    name: p.name,
+                    tag: p.tag || 'JP1',
+                    ...ROLES.reduce((acc, role) => ({
+                      ...acc,
+                      [`${role}_rank`]: rank,
+                      [role]: true
+                    }), {})
+                  };
+                });
+                
+                setPlayers(prev => {
+                  // 重複チェック
+                  const existingNames = new Set(prev.map(p => p.name));
+                  const filteredNew = newPlayers.filter(p => !existingNames.has(p.name));
+                  return [...prev, ...filteredNew];
+                });
+                setStatusMsg(`${newPlayers.length}人のプレイヤーを読み込みました。`);
+                addLog('SUCCESS', `プレイヤー読み込み完了: ${newPlayers.length}人`);
+                setTimeout(() => setStatusMsg(''), 3000);
+              } else {          const errorMsg = event.data.error || 'ロビー情報の取得に失敗しました。';
+          setStatusMsg(errorMsg);
+          addLog('ERROR', errorMsg);
+          alert(errorMsg);
         }
       }
     };
@@ -166,6 +201,7 @@ export default function App() {
     if (manualInfo) {
       setLcuInfo(manualInfo);
       setStatusMsg('入力フォームから読み込みました！');
+      addLog('INFO', 'Lockfile情報を手動入力から読み込みました', manualInfo);
       setTimeout(() => setStatusMsg(''), 3000);
       return;
     }
@@ -194,9 +230,11 @@ export default function App() {
       if (info) {
         setLcuInfo(info);
         setStatusMsg('lockfileを読み込みました！');
+        addLog('INFO', 'Lockfileをファイルシステムから読み込みました', info);
         setTimeout(() => setStatusMsg(''), 3000);
       }
     } catch (err) {
+      addLog('ERROR', 'Lockfile読み込み失敗', err.message);
       alert(err.message || "読み込みに失敗しました。");
     }
   };
@@ -207,12 +245,31 @@ export default function App() {
     setIsLoadingLobby(true);
     setStatusMsg('拡張機能経由でロビー情報を取得中...');
     
-    // window.postMessage を使用してコンテンツスクリプトに送信
-    window.postMessage({
+    console.log("送信する情報:", { type: 'FETCH_LCU_LOBBY_REQUEST', port: lcuInfo.port, password: lcuInfo.password }); // ★ログ追加
+
+    const messageData = {
       type: 'FETCH_LCU_LOBBY_REQUEST',
       port: lcuInfo.port,
-      password: lcuInfo.password
-    }, "*");
+      password: lcuInfo.password,
+      protocol: lcuInfo.protocol || 'https'
+    };
+    
+    addLog('SEND', '拡張機能へリクエスト送信', messageData);
+
+    // window.postMessage を使用してコンテンツスクリプトに送信
+    window.postMessage(messageData, "*");
+
+    // タイムアウト処理（5秒応答がなければエラーとする）
+    setTimeout(() => {
+      setIsLoadingLobby(prev => {
+        if (prev) {
+          addLog('TIMEOUT', '拡張機能からの応答がありません。拡張機能がインストールされているか、LCUが起動しているか確認してください。');
+          setStatusMsg('タイムアウト: 拡張機能からの応答がありません。');
+          return false;
+        }
+        return prev;
+      });
+    }, 5000);
   }, [lcuInfo]);
 
   const addPlayer = (name = inputName, rank = inputRank) => {
@@ -331,17 +388,36 @@ export default function App() {
     });
   };
 
-  const exportJSON = () => {
+  const exportJSON = async () => {
     const data = players.reduce((acc, p) => {
       acc[p.name] = { tag: p.tag, rank: ROLES.reduce((rAcc, r) => ({ ...rAcc, [`${r}_rank`]: p[`${r}_rank`] }), {}), role: ROLES.reduce((rAcc, r) => ({ ...rAcc, [r]: p[r] }), {}) };
       return acc;
     }, {});
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'player_dictionary.json';
-    a.click();
+    
+    const jsonStr = JSON.stringify(data, null, 2);
+    try {
+      if (window.showSaveFilePicker) {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: 'player_dictionary.json',
+          types: [{ description: 'JSON File', accept: { 'application/json': ['.json'] } }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(jsonStr);
+        await writable.close();
+        setStatusMsg('保存しました。');
+        setTimeout(() => setStatusMsg(''), 3000);
+      } else {
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'player_dictionary.json';
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch (err) {
+      if (err.name !== 'AbortError') alert("保存に失敗しました。");
+    }
   };
 
   const handleFileUpload = (e) => {
@@ -351,14 +427,29 @@ export default function App() {
     reader.onload = (evt) => {
       try {
         const data = JSON.parse(evt.target.result);
-        const newPlayers = Object.entries(data).map(([name, info]) => ({
-          id: Math.random(), name, tag: info.tag || 'JP1',
-          ...ROLES.reduce((acc, r) => ({ ...acc, [r]: info.role?.[r] ?? false, [`${r}_rank`]: info.rank?.[`${r}_rank`] || 'UNRANKED' }), {})
+        setPlayers(prev => prev.map(p => {
+          const info = data[p.name];
+          if (info) {
+            return {
+              ...p,
+              ...ROLES.reduce((acc, r) => ({ ...acc, [r]: info.role?.[r] ?? p[r], [`${r}_rank`]: info.rank?.[`${r}_rank`] || p[`${r}_rank`] }), {})
+            };
+          }
+          return p;
         }));
-        setPlayers(prev => [...prev, ...newPlayers]);
+        setStatusMsg('設定を読み込みました。');
+        setTimeout(() => setStatusMsg(''), 3000);
       } catch (err) { alert("形式エラー"); }
     };
     reader.readAsText(file);
+  };
+
+  const getAverageRank = (score) => {
+    const avg = score / 5;
+    const closest = RANK_DATA.reduce((prev, curr) => 
+      Math.abs(curr.val - avg) < Math.abs(prev.val - avg) ? curr : prev
+    );
+    return closest.name;
   };
 
   return (
@@ -417,8 +508,42 @@ export default function App() {
                <Upload size={16} /> LOAD
                <input type="file" className="hidden" onChange={handleFileUpload} accept=".json" />
              </label>
+             <button 
+               onClick={() => setShowDebug(!showDebug)} 
+               className={`flex items-center gap-2 px-3 py-2 rounded transition shadow-sm border ${showDebug ? 'bg-red-900/50 border-red-500 text-red-200' : 'bg-slate-800 border-slate-700 text-slate-400'}`}
+               title="デバッグログを表示"
+             >
+               <Bug size={16} />
+             </button>
           </div>
         </header>
+
+        {/* Debug Console */}
+        {showDebug && (
+          <div className="bg-black/80 font-mono text-xs p-4 rounded-xl border border-red-500/30 mb-6 shadow-xl max-h-60 overflow-y-auto">
+            <div className="flex justify-between items-center mb-2 border-b border-red-900/50 pb-2">
+              <span className="text-red-400 font-bold flex items-center gap-2"><Terminal size={12}/> DEBUG CONSOLE</span>
+              <button onClick={() => setLogs([])} className="text-slate-500 hover:text-slate-300">CLEAR</button>
+            </div>
+            <div className="space-y-1">
+              {logs.length === 0 && <span className="text-slate-600 italic">No logs yet...</span>}
+              {logs.map((log, i) => (
+                <div key={i} className="flex gap-2 break-all">
+                  <span className="text-slate-500 shrink-0">[{log.timestamp}]</span>
+                  <span className={`font-bold shrink-0 w-16 ${
+                    log.type === 'SEND' ? 'text-blue-400' : 
+                    log.type === 'RECEIVE' ? 'text-green-400' : 
+                    log.type === 'ERROR' ? 'text-red-500' : 
+                    log.type === 'TIMEOUT' ? 'text-amber-500' : 'text-slate-300'
+                  }`}>{log.type}</span>
+                  <span className="text-slate-300">{log.message}</span>
+                  {log.data && <span className="text-slate-500 truncate ml-2">{log.data}</span>}
+                </div>
+              ))}
+              <div ref={logsEndRef} />
+            </div>
+          </div>
+        )}
 
         {lcuInfo && (
           <div className="bg-indigo-900/20 border border-indigo-500/30 rounded-xl p-4 mb-6 flex items-center justify-between animate-in fade-in slide-in-from-top-2 duration-300 shadow-lg shadow-indigo-900/10">
@@ -565,7 +690,7 @@ export default function App() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2.5">
                       <p className="text-[10px] font-bold text-blue-400 flex items-center justify-between px-1">
-                        <span>TEAM 1</span>
+                        <span>TEAM 1 <span className="text-slate-500 font-normal ml-1">({getAverageRank(result.score1)})</span></span>
                         <span className="font-mono">{result.score1}</span>
                       </p>
                       {result.team1.map((p, i) => (
@@ -577,7 +702,7 @@ export default function App() {
                     </div>
                     <div className="space-y-2.5">
                       <p className="text-[10px] font-bold text-red-400 flex items-center justify-between px-1">
-                        <span>TEAM 2</span>
+                        <span>TEAM 2 <span className="text-slate-500 font-normal ml-1">({getAverageRank(result.score2)})</span></span>
                         <span className="font-mono">{result.score2}</span>
                       </p>
                       {result.team2.map((p, i) => (
