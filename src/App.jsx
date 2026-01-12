@@ -73,6 +73,9 @@ export default function App() {
   const [dirHandle, setDirHandle] = useState(null);
   const [pathDisplay, setPathDisplay] = useState('C:\\Riot Games\\League of Legends');
   const [isLoadingLobby, setIsLoadingLobby] = useState(false);
+  const [matches, setMatches] = useState([]);
+  const [selectedMatchId, setSelectedMatchId] = useState('');
+  const [isLoadingMatches, setIsLoadingMatches] = useState(false);
   
   // Debug State
   const [showDebug, setShowDebug] = useState(false);
@@ -116,43 +119,59 @@ export default function App() {
       }
 
       // 自分のウィンドウからのメッセージのみを処理（拡張機能のコンテンツスクリプト経由）
-              if (event.data && event.data.type === 'LCU_LOBBY_DATA_RESPONSE') {
-              setIsLoadingLobby(false);
-              if (event.data.success && event.data.data) {
-                const newPlayers = event.data.data.map(p => {
-                  let rank = 'UNRANKED';
-                  if (p.tier && p.tier.toUpperCase() !== 'UNRANKED') {
-                    const tier = p.tier.toUpperCase();
-                    const division = p.division ? p.division.toUpperCase() : '';
-                    // MASTER, GRANDMASTER, CHALLENGERの場合はDivisionを含めない
-                    rank = ['MASTER', 'GRANDMASTER', 'CHALLENGER'].includes(tier) ? tier : `${tier} ${division}`.trim();
-                  }
-                  return {
-                    id: Math.random() + Date.now(),
-                    name: p.name,
-                    tag: p.tag || 'JP1',
-                    ...ROLES.reduce((acc, role) => ({
-                      ...acc,
-                      [`${role}_rank`]: rank,
-                      [role]: true
-                    }), {})
-                  };
-                });
+      if (event.data && event.data.type === 'LCU_LOBBY_DATA_RESPONSE') {
+        setIsLoadingLobby(false);
+        if (event.data.success && event.data.data) {
+          const newPlayers = event.data.data.map(p => {
+          let rank = 'UNRANKED';
+          if (p.tier && p.tier.toUpperCase() !== 'UNRANKED') {
+            const tier = p.tier.toUpperCase();
+            const division = p.division ? p.division.toUpperCase() : '';
+            // MASTER, GRANDMASTER, CHALLENGERの場合はDivisionを含めない
+            rank = ['MASTER', 'GRANDMASTER', 'CHALLENGER'].includes(tier) ? tier : `${tier} ${division}`.trim();
+          }
+          return {
+            id: Math.random() + Date.now(),
+            name: p.name,
+            tag: p.tag || 'JP1',
+            ...ROLES.reduce((acc, role) => ({
+              ...acc,
+              [`${role}_rank`]: rank,
+              [role]: true
+            }), {})
+          };
+        });
                 
-                setPlayers(prev => {
-                  // 重複チェック
-                  const existingNames = new Set(prev.map(p => p.name));
-                  const filteredNew = newPlayers.filter(p => !existingNames.has(p.name));
-                  return [...prev, ...filteredNew];
-                });
-                setStatusMsg(`${newPlayers.length}人のプレイヤーを読み込みました。`);
-                addLog('SUCCESS', `プレイヤー読み込み完了: ${newPlayers.length}人`);
-                setTimeout(() => setStatusMsg(''), 3000);
-              } else {          const errorMsg = event.data.error || 'ロビー情報の取得に失敗しました。';
+        setPlayers(prev => {
+          // 重複チェック
+          const existingNames = new Set(prev.map(p => p.name));
+          const filteredNew = newPlayers.filter(p => !existingNames.has(p.name));
+          return [...prev, ...filteredNew];
+        });
+        setStatusMsg(`${newPlayers.length}人のプレイヤーを読み込みました。`);
+        addLog('SUCCESS', `プレイヤー読み込み完了: ${newPlayers.length}人`);
+        setTimeout(() => setStatusMsg(''), 3000);
+        } else {          const errorMsg = event.data.error || 'ロビー情報の取得に失敗しました。';
           setStatusMsg(errorMsg);
           addLog('ERROR', errorMsg);
           alert(errorMsg);
         }
+      }else if (event.data && event.data.type === 'LCU_MATCH_HISTORY_DATA_RESPONSE') {
+        setIsLoadingMatches(false);
+        if (event.data.success && event.data.data) {
+          
+          setMatches(event.data.data);
+          setStatusMsg('対戦履歴を取得しました。');
+          addLog('SUCCESS', '対戦履歴取得完了');
+        } else {
+          const errorMsg = event.data.error || '対戦履歴の取得に失敗しました。';
+          setStatusMsg(errorMsg);
+          addLog('ERROR', errorMsg);
+          alert(errorMsg);
+        }
+      } else if (event.data && event.data.type === 'LCU_ERROR') {
+        const errorMsg = event.data.error || 'エラーが発生しました。';
+        setIsLoadingLobby(false);   
       }
     };
 
@@ -452,6 +471,33 @@ export default function App() {
     return closest.name;
   };
 
+  const handleFetchMatches = () => {
+    setIsLoadingMatches(true);
+    setStatusMsg('拡張機能経由で対戦履歴を取得中...');
+
+    const messageData = {
+      type: 'FETCH_MATCH_HISTORY_REQUEST',
+      port: lcuInfo.port,
+      password: lcuInfo.password,
+      protocol: lcuInfo.protocol || 'https'
+    };
+    addLog('SEND', '拡張機能へ対戦履歴リクエスト送信', messageData);
+    window.postMessage(messageData, "*");
+    
+    setTimeout(() => {
+      const dummyMatches = [
+        { gameid: 'match1', timestamp: Date.now() - 1000000, outcome: 'Victory', kda: '10/2/5', champion: 'Garen' },
+        { gameid: 'match2', timestamp: Date.now() - 2000000, outcome: 'Defeat', kda: '3/8/2', champion: 'Ashe' },
+        { gameid: 'match3', timestamp: Date.now() - 3000000, outcome: 'Victory', kda: '15/5/10', champion: 'Lux' },
+      ];
+      setMatches(dummyMatches);
+      setSelectedMatchId('');
+      setIsLoadingMatches(false);
+    }, 1000);
+  };
+
+  const selectedMatch = matches.find(m => m.gameid === selectedMatchId);
+
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 p-4 md:p-8 font-sans">
       <div className="max-w-6xl mx-auto">
@@ -720,6 +766,42 @@ export default function App() {
                   </div>
                 </div>
               )}
+            </section>
+
+            <section className="bg-slate-800/50 backdrop-blur-sm p-6 rounded-xl border border-slate-700 shadow-xl mt-6">
+              <h2 className="text-lg font-semibold mb-4 text-blue-400">対戦履歴</h2>
+              <div className="space-y-4">
+                <button
+                  onClick={handleFetchMatches}
+                  disabled={isLoadingMatches}
+                  className="w-full bg-purple-600 hover:bg-purple-500 disabled:bg-slate-700 disabled:opacity-40 py-3 rounded-xl font-bold transition shadow-lg shadow-purple-900/20 active:scale-[0.98] text-white"
+                >
+                  {isLoadingMatches ? '取得中...' : '対戦履歴を取得'}
+                </button>
+                {matches.length > 0 && (
+                  <select
+                    value={selectedMatchId}
+                    onChange={(e) => setSelectedMatchId(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  >
+                    <option value="">試合を選択...</option>
+                    {matches.map(match => (
+                      <option key={match.id} value={match.id}>
+                        {new Date(match.timestamp).toLocaleString()} - {match.outcome} ({match.kda})
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {selectedMatch && (
+                  <div className="mt-4 space-y-3 bg-slate-900/50 p-4 rounded-lg border border-slate-700 animate-in fade-in">
+                    <h3 className="text-md font-bold text-slate-200">試合詳細</h3>
+                    <p><strong>結果:</strong> <span className={selectedMatch.outcome === 'Victory' ? 'text-green-400' : 'text-red-400'}>{selectedMatch.outcome}</span></p>
+                    <p><strong>KDA:</strong> {selectedMatch.kda}</p>
+                    <p><strong>チャンピオン:</strong> {selectedMatch.champion}</p>
+                    <p><strong>試合日時:</strong> {new Date(selectedMatch.timestamp).toLocaleString()}</p>
+                  </div>
+                )}
+              </div>
             </section>
             
             <footer className="flex flex-col items-center gap-4 text-slate-500 pt-4">

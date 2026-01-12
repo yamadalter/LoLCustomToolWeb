@@ -1,10 +1,8 @@
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  const { port, password } = request;
+  const auth = 'Basic ' + btoa(`riot:${password}`);
   if (request.action === 'FETCH_LCU_LOBBY') {
-    const { port, password } = request;
     const url = `https://127.0.0.1:${port}/lol-lobby/v2/lobby`;
-    
-    // 認証情報：riot:パスワード をBase64化
-    const auth = 'Basic ' + btoa(`riot:${password}`);
 
     console.log(`[LCU Connect] Connecting to ${url}`); // コンソール確認用
 
@@ -95,6 +93,81 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       sendResponse({ success: false, error: err.toString() });
     });
 
+    return true; // 非同期レスポンスのために必須
+  }else if (request.action === 'FETCH_MATCH_HISTORY') {
+
+    const url = `https://127.0.0.1:${port}/lol-summoner/v1/current-summoner/`;
+    console.log(`[LCU Connect] Connecting to ${url}`); // コンソール確認用
+    fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': auth,
+        'Accept': 'application/json'
+      }
+    })
+    .then(async (res) => {
+      console.log(`[LCU Connect] Status: ${res.status}`);
+      // 現在のサモナーの情報を取得
+      const summonerRes = await fetch(`https://127.0.0.1:${port}/lol-summoner/v1/current-summoner/`, {
+        headers: { 'Authorization': auth }
+      });
+      if (!summonerRes.ok) {
+        console.error(`[LCU Connect] Failed to get summoner data`);
+        sendResponse({ success: false, error: 'Failed to get summoner data' });
+        return true;
+      }
+      const summonerData = await summonerRes.json();
+      const url = `https://127.0.0.1:${port}/lol-match-history/v1/products/lol/${summonerData.puuid}/matches`;
+      fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': auth,
+          'Accept': 'application/json'
+        }
+      })
+      .then(async (res) => {
+        console.log(`[LCU Connect] Status: ${res.status}`);
+        
+        if (!res.ok) {
+          // ステータスコードも含めてエラーを返す
+          throw new Error(`LCU Error: ${res.status} ${res.statusText}`);
+        }
+        const data = await res.json();
+        console.log("[LCU Connect] Success (Match History):", data);
+        sendResponse({ success: true, data });
+        // 'GameComplete' した'CUSTOM_GAME'の試合履歴データを返す
+        const customGames = data.games.games.filter(game => game.gameType === 'CUSTOM_GAME' && game.gameMode === 'CLASSIC' && game.endOfGameResult === 'GameComplete'); 
+        sendResponse({ success: true, data: customGames });
+        
+        // 1試合ずつ詳細データを取得する
+        const detailedCustomGamesPromises = customGames.map(async (game) => {
+          const matchDetailsRes = await fetch(`https://127.0.0.1:${port}/lol-match-history/v1/games/${game.gameId}`, {
+            headers: { 'Authorization': auth }
+          });
+          if (!matchDetailsRes.ok) {
+            console.error(`[LCU Connect] Failed to get match details for gameId: ${game.gameId}`);
+            return null;
+          }
+          const matchDetails = await matchDetailsRes.json();
+          return matchDetails;
+        });
+
+        const detailedCustomGames = (await Promise.all(detailedCustomGamesPromises)).filter(game => game !== null);
+        sendResponse({ success: true, data: detailedCustomGames });
+        
+        return detailedCustomGames;
+      })
+      .catch((err) => {
+        console.error("[LCU Connect] Failed:", err);
+        // エラー内容をテキストで返す
+        sendResponse({ success: false, error: err.toString() });
+      });
+    })
+    .catch((err) => {
+      console.error("[LCU Connect] Failed:", err);
+      // エラー内容をテキストで返す
+      sendResponse({ success: false, error: err.toString() });
+    });
     return true; // 非同期レスポンスのために必須
   }
 });
