@@ -1,66 +1,20 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { 
-  Users, 
-  UserPlus, 
-  Trash2, 
   Copy, 
-  ExternalLink, 
-  Save, 
-  Upload, 
-  ChevronRight,
-  Settings,
+  ExternalLink,
   Github,
   Twitter,
-  FolderOpen,
-  RefreshCw,
-  AlertCircle,
-  Terminal,
-  FileSearch,
-  MapPin,
-  Gamepad2,
-  Bug
 } from 'lucide-react';
 
-// --- Constants ---
-const VERSION = 'v1.4.1-web-debug';
-const ROLES = ['top', 'jg', 'mid', 'bot', 'sup'];
+import Header from './components/Header';
+import PlayerInput from './components/PlayerInput';
+import TeamResults from './components/TeamResults';
+import PlayerList from './components/PlayerList';
+import MatchHistory from './components/MatchHistory';
 
-const RANK_DATA = [
-  { tag: "UN", name: "UNRANKED", val: 0, color: "#FFFFFF" },
-  { tag: "I4", name: "IRON IV", val: 1, color: "#51484A" },
-  { tag: "I3", name: "IRON III", val: 2, color: "#51484A" },
-  { tag: "I2", name: "IRON II", val: 3, color: "#51484A" },
-  { tag: "I1", name: "IRON I", val: 4, color: "#51484A" },
-  { tag: "B4", name: "BRONZE IV", val: 5, color: "#8C5229" },
-  { tag: "B3", name: "BRONZE III", val: 6, color: "#8C5229" },
-  { tag: "B2", name: "BRONZE II", val: 7, color: "#8C5229" },
-  { tag: "B1", name: "BRONZE I", val: 8, color: "#8C5229" },
-  { tag: "S4", name: "SILVER IV", val: 9, color: "#8098A1" },
-  { tag: "S3", name: "SILVER III", val: 10, color: "#8098A1" },
-  { tag: "S2", name: "SILVER II", val: 11, color: "#8098A1" },
-  { tag: "S1", name: "SILVER I", val: 12, color: "#8098A1" },
-  { tag: "G4", name: "GOLD IV", val: 13, color: "#CD8837" },
-  { tag: "G3", name: "GOLD III", val: 14, color: "#CD8837" },
-  { tag: "G2", name: "GOLD II", val: 15, color: "#CD8837" },
-  { tag: "G1", name: "GOLD I", val: 16, color: "#CD8837" },
-  { tag: "P4", name: "PLATINUM IV", val: 17, color: "#4E9996" },
-  { tag: "P3", name: "PLATINUM III", val: 18, color: "#4E9996" },
-  { tag: "P2", name: "PLATINUM II", val: 19, color: "#4E9996" },
-  { tag: "P1", name: "PLATINUM I", val: 20, color: "#4E9996" },
-  { tag: "E4", name: "EMERALD IV", val: 21, color: "#2ECC71" },
-  { tag: "E3", name: "EMERALD III", val: 22, color: "#2ECC71" },
-  { tag: "E2", name: "EMERALD II", val: 23, color: "#2ECC71" },
-  { tag: "E1", name: "EMERALD I", val: 24, color: "#2ECC71" },
-  { tag: "D4", name: "DIAMOND IV", val: 25, color: "#576ACC" },
-  { tag: "D3", name: "DIAMOND III", val: 26, color: "#576ACC" },
-  { tag: "D2", name: "DIAMOND II", val: 27, color: "#576ACC" },
-  { tag: "D1", name: "DIAMOND I", val: 28, color: "#576ACC" },
-  { tag: "M", name: "MASTER", val: 29, color: "#9A4E9E" },
-  { tag: "GM", name: "GRANDMASTER", val: 34, color: "#CD4545" },
-  { tag: "C", name: "CHALLENGER", val: 38, color: "#F4C775" },
-];
+import { VERSION, ROLES, RANK_DATA, RANK_MAP } from './constants';
 
-const RANK_MAP = RANK_DATA.reduce((acc, r) => ({ ...acc, [r.name]: r.val }), {});
+// --- Components ---
 
 export default function App() {
   const [players, setPlayers] = useState([]);
@@ -76,6 +30,9 @@ export default function App() {
   const [matches, setMatches] = useState([]);
   const [selectedMatchId, setSelectedMatchId] = useState('');
   const [isLoadingMatches, setIsLoadingMatches] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  
+  const [currentUserPuuid, setCurrentUserPuuid] = useState(null);
   
   // Debug State
   const [showDebug, setShowDebug] = useState(false);
@@ -159,10 +116,21 @@ export default function App() {
       }else if (event.data && event.data.type === 'LCU_MATCH_HISTORY_DATA_RESPONSE') {
         setIsLoadingMatches(false);
         if (event.data.success && event.data.data) {
-          
-          setMatches(event.data.data);
+          const { games, puuid } = event.data.data;
+
+          let extractedGames = [];
+          if (Array.isArray(games)) {
+            extractedGames = games;
+          } else if (games?.games) {
+            if (Array.isArray(games.games)) {
+              extractedGames = games.games;
+            }
+          }
+
+          setMatches(extractedGames);
+          setCurrentUserPuuid(puuid);
           setStatusMsg('対戦履歴を取得しました。');
-          addLog('SUCCESS', '対戦履歴取得完了');
+          addLog('SUCCESS', `対戦履歴取得完了 (PUUID: ${puuid})`);
         } else {
           const errorMsg = event.data.error || '対戦履歴の取得に失敗しました。';
           setStatusMsg(errorMsg);
@@ -289,7 +257,7 @@ export default function App() {
         return prev;
       });
     }, 5000);
-  }, [lcuInfo]);
+  }, [lcuInfo, addLog]);
 
   const addPlayer = (name = inputName, rank = inputRank) => {
     if (!name.trim()) return;
@@ -463,15 +431,10 @@ export default function App() {
     reader.readAsText(file);
   };
 
-  const getAverageRank = (score) => {
-    const avg = score / 5;
-    const closest = RANK_DATA.reduce((prev, curr) => 
-      Math.abs(curr.val - avg) < Math.abs(prev.val - avg) ? curr : prev
-    );
-    return closest.name;
-  };
+  
 
   const handleFetchMatches = () => {
+    if (!lcuInfo) return;
     setIsLoadingMatches(true);
     setStatusMsg('拡張機能経由で対戦履歴を取得中...');
 
@@ -483,339 +446,121 @@ export default function App() {
     };
     addLog('SEND', '拡張機能へ対戦履歴リクエスト送信', messageData);
     window.postMessage(messageData, "*");
-    
-    setTimeout(() => {
-      const dummyMatches = [
-        { gameid: 'match1', timestamp: Date.now() - 1000000, outcome: 'Victory', kda: '10/2/5', champion: 'Garen' },
-        { gameid: 'match2', timestamp: Date.now() - 2000000, outcome: 'Defeat', kda: '3/8/2', champion: 'Ashe' },
-        { gameid: 'match3', timestamp: Date.now() - 3000000, outcome: 'Victory', kda: '15/5/10', champion: 'Lux' },
-      ];
-      setMatches(dummyMatches);
-      setSelectedMatchId('');
-      setIsLoadingMatches(false);
-    }, 1000);
   };
 
-  const selectedMatch = matches.find(m => m.gameid === selectedMatchId);
+  const handleUploadMatch = async (matchData) => {
+    if (!matchData) {
+      setStatusMsg('アップロードする試合が選択されていません。');
+      return;
+    }
+    setIsUploading(true);
+    setStatusMsg('試合結果をアップロード中...');
+    addLog('SEND', 'サーバーへ試合結果をアップロードします', matchData);
+
+    try {
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(matchData),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || 'サーバーでエラーが発生しました。');
+      }
+
+      setStatusMsg('アップロードに成功しました！');
+      addLog('SUCCESS', 'アップロード成功', result);
+    } catch (error) {
+      console.error('Upload failed:', error);
+      setStatusMsg(`アップロード失敗: ${error.message}`);
+      addLog('ERROR', `アップロード失敗: ${error.message}`);
+      alert(`アップロードに失敗しました: ${error.message}`);
+    } finally {
+      setIsUploading(false);
+      setTimeout(() => setStatusMsg(''), 5000); // 5秒後にメッセージを消す
+    }
+  };
+
+  const selectedMatch = Array.isArray(matches) ? matches.find(m => (m.gameId || m.gameid).toString() === selectedMatchId) : null;
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 p-4 md:p-8 font-sans">
-      <div className="max-w-6xl mx-auto">
-        <header className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-          <div className="flex items-center gap-3">
-            <div className="bg-blue-600 p-2 rounded-lg shadow-lg shadow-blue-900/20">
-              <span className="text-white font-bold"><Users size={32} /></span>
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">LoLチーム分けツール</h1>
-              <p className="text-slate-400 text-sm">Balanced Team Maker for Custom Games</p>
-            </div>
-          </div>
-          
-          <div className="flex flex-wrap gap-2 text-sm justify-center items-center">
-             <div className="flex items-center gap-2 bg-slate-900/80 border border-slate-700 px-3 py-1 rounded text-[10px] font-mono shadow-inner group">
-               <MapPin size={12} className="text-indigo-400 shrink-0" />
-               <input 
-                  type="text"
-                  value={pathDisplay}
-                  onChange={(e) => setPathDisplay(e.target.value)}
-                  className="bg-transparent border-none focus:outline-none text-slate-400 w-[150px] md:w-[250px] placeholder:italic"
-                  placeholder="Paste lockfile content here..."
-               />
-             </div>
+      <div className="max-w-screen-3xl mx-auto">
+        <Header
+          pathDisplay={pathDisplay}
+          onPathChange={(e) => setPathDisplay(e.target.value)}
+          onPickFolder={handlePickFolder}
+          isFileSystemApiSupported={isFileSystemApiSupported}
+          onReadLockfile={handleReadLockfile}
+          onFetchLobby={fetchLobbyFromExtension}
+          lcuInfo={lcuInfo}
+          isLoadingLobby={isLoadingLobby}
+          onExport={exportJSON}
+          onFileUpload={handleFileUpload}
+          showDebug={showDebug}
+          onToggleDebug={() => setShowDebug(!showDebug)}
+          debugLogs={logs}
+          logsEndRef={logsEndRef}
+          onClearLogs={() => setLogs([])}
+        />
 
-             <button 
-               onClick={handlePickFolder} 
-               className={`flex items-center gap-2 px-3 py-2 rounded transition shadow-sm border ${isFileSystemApiSupported ? 'bg-indigo-600 hover:bg-indigo-500 border-indigo-400 text-white' : 'bg-slate-700 border-slate-600 opacity-60'}`}
-             >
-               <FolderOpen size={16} /> フォルダ選択
-             </button>
-             <button 
-               onClick={handleReadLockfile} 
-               className="flex items-center gap-2 px-3 py-2 rounded transition shadow-sm border bg-emerald-600 hover:bg-emerald-500 border-emerald-400 text-white"
-             >
-               <FileSearch size={16} /> 設定読込
-             </button>
-             
-             {/* ロビー取得ボタン - lcuInfoがある時のみ表示 */}
-             <button 
-               onClick={fetchLobbyFromExtension}
-               disabled={!lcuInfo || isLoadingLobby}
-               className={`flex items-center gap-2 px-3 py-2 rounded transition shadow-sm border ${lcuInfo ? 'bg-amber-600 hover:bg-amber-500 border-amber-400 text-white animate-pulse-subtle' : 'bg-slate-800 border-slate-700 opacity-40 cursor-not-allowed text-slate-500'}`}
-             >
-               <Gamepad2 size={16} className={isLoadingLobby ? 'animate-spin' : ''} />
-               {isLoadingLobby ? '取得中...' : 'ロビー取得'}
-             </button>
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-8">
+          <div className="md:col-span-2 space-y-6">
+            <PlayerInput
+              inputName={inputName}
+              onInputNameChange={(e) => setInputName(e.target.value)}
+              inputRank={inputRank}
+              onInputRankChange={(e) => setInputRank(e.target.value)}
+              onAddPlayer={() => addPlayer()}
+            />
 
-             <button onClick={exportJSON} className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded transition shadow-sm border border-slate-700">
-               <Save size={16} /> SAVE
-             </button>
-             <label className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded transition cursor-pointer shadow-sm border border-slate-700">
-               <Upload size={16} /> LOAD
-               <input type="file" className="hidden" onChange={handleFileUpload} accept=".json" />
-             </label>
-             <button 
-               onClick={() => setShowDebug(!showDebug)} 
-               className={`flex items-center gap-2 px-3 py-2 rounded transition shadow-sm border ${showDebug ? 'bg-red-900/50 border-red-500 text-red-200' : 'bg-slate-800 border-slate-700 text-slate-400'}`}
-               title="デバッグログを表示"
-             >
-               <Bug size={16} />
-             </button>
-          </div>
-        </header>
-
-        {/* Debug Console */}
-        {showDebug && (
-          <div className="bg-black/80 font-mono text-xs p-4 rounded-xl border border-red-500/30 mb-6 shadow-xl max-h-60 overflow-y-auto">
-            <div className="flex justify-between items-center mb-2 border-b border-red-900/50 pb-2">
-              <span className="text-red-400 font-bold flex items-center gap-2"><Terminal size={12}/> DEBUG CONSOLE</span>
-              <button onClick={() => setLogs([])} className="text-slate-500 hover:text-slate-300">CLEAR</button>
-            </div>
-            <div className="space-y-1">
-              {logs.length === 0 && <span className="text-slate-600 italic">No logs yet...</span>}
-              {logs.map((log, i) => (
-                <div key={i} className="flex gap-2 break-all">
-                  <span className="text-slate-500 shrink-0">[{log.timestamp}]</span>
-                  <span className={`font-bold shrink-0 w-16 ${
-                    log.type === 'SEND' ? 'text-blue-400' : 
-                    log.type === 'RECEIVE' ? 'text-green-400' : 
-                    log.type === 'ERROR' ? 'text-red-500' : 
-                    log.type === 'TIMEOUT' ? 'text-amber-500' : 'text-slate-300'
-                  }`}>{log.type}</span>
-                  <span className="text-slate-300">{log.message}</span>
-                  {log.data && <span className="text-slate-500 truncate ml-2">{log.data}</span>}
-                </div>
-              ))}
-              <div ref={logsEndRef} />
-            </div>
-          </div>
-        )}
-
-        {lcuInfo && (
-          <div className="bg-indigo-900/20 border border-indigo-500/30 rounded-xl p-4 mb-6 flex items-center justify-between animate-in fade-in slide-in-from-top-2 duration-300 shadow-lg shadow-indigo-900/10">
-            <div className="flex items-center gap-3">
-              <div className="bg-indigo-500/20 p-2 rounded-full text-indigo-400">
-                <RefreshCw size={16} />
-              </div>
-              <div>
-                <div className="text-indigo-300 font-bold text-sm">LCU接続情報取得済み</div>
-                <div className="text-[10px] text-slate-500 font-mono">Port: {lcuInfo.port} | Auth: {lcuInfo.password.substring(0,4)}***</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 text-[10px] text-amber-300 bg-amber-400/5 px-3 py-1.5 rounded-full border border-amber-500/20">
-              <AlertCircle size={12} className="shrink-0" />
-              <span>拡張機能を介してローカル通信を行います</span>
-            </div>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-6">
-            <section className="bg-slate-800/50 backdrop-blur-sm p-6 rounded-xl border border-slate-700 shadow-xl">
-              <h2 className="flex items-center gap-2 text-lg font-semibold mb-4 text-blue-400">
-                <UserPlus size={20} /> プレイヤー追加
-              </h2>
-              <div className="flex flex-wrap gap-3">
-                <input 
-                  type="text" 
-                  placeholder="サモナー名"
-                  className="bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 flex-grow focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                  value={inputName}
-                  onChange={(e) => setInputName(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && addPlayer()}
-                />
-                <select 
-                  className="bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                  value={inputRank}
-                  onChange={(e) => setInputRank(e.target.value)}
-                >
-                  {RANK_DATA.map(r => (
-                    <option key={r.name} value={r.name}>{r.name}</option>
-                  ))}
-                </select>
-                <button 
-                  onClick={() => addPlayer()}
-                  className="bg-blue-600 hover:bg-blue-500 px-8 py-2 rounded-lg font-bold transition shadow-lg shadow-blue-900/40 active:scale-95 text-white"
-                >
-                  追加
-                </button>
-              </div>
-            </section>
-
-            <section className="bg-slate-800/50 backdrop-blur-sm p-6 rounded-xl border border-slate-700 shadow-xl overflow-x-auto">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold text-blue-400">プレイヤーリスト ({players.length})</h2>
-                <button onClick={() => setPlayers([])} className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1 transition-colors">
-                  <Trash2 size={12} /> 全削除
-                </button>
-              </div>
-              <table className="w-full text-left border-collapse min-w-[600px]">
-                <thead>
-                  <tr className="border-b border-slate-700 text-slate-400 text-[10px] uppercase tracking-widest">
-                    <th className="py-3 px-1">Name</th>
-                    {ROLES.map(r => <th key={r} className="py-3 text-center">{r}</th>)}
-                    <th className="py-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="text-sm">
-                  {players.map((p) => (
-                    <tr key={p.id} className="border-b border-slate-700/30 hover:bg-slate-700/20 transition-colors">
-                      <td className="py-4 font-medium max-w-[150px] truncate text-slate-200">{p.name}</td>
-                      {ROLES.map(role => (
-                        <td key={role} className="py-4 text-center">
-                          <div className="flex flex-col items-center gap-1.5">
-                            <input 
-                              type="checkbox" 
-                              checked={p[role]} 
-                              onChange={(e) => updatePlayer(p.id, role, e.target.checked)}
-                              className="w-4 h-4 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-600 transition-all cursor-pointer"
-                            />
-                            <select 
-                              className="text-[9px] bg-slate-900/50 border border-slate-700/50 rounded px-1.5 py-0.5 cursor-pointer font-bold tracking-tighter"
-                              style={{ color: RANK_DATA.find(r => r.name === p[`${role}_rank`])?.color }}
-                              value={p[`${role}_rank`]}
-                              onChange={(e) => updatePlayer(p.id, `${role}_rank`, e.target.value)}
-                            >
-                              {RANK_DATA.map(r => (
-                                <option key={r.tag} value={r.name}>{r.tag}</option>
-                              ))}
-                            </select>
-                          </div>
-                        </td>
-                      ))}
-                      <td className="py-4 text-right">
-                        <div className="flex justify-end gap-1.5">
-                          <button onClick={() => checkAllRoles(p.id)} className="p-2 text-slate-500 hover:text-white hover:bg-slate-700 rounded-lg transition-all" title="全選択">
-                            <Settings size={14} />
-                          </button>
-                          <button onClick={() => removePlayer(p.id)} className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-950/20 rounded-lg transition-all" title="削除">
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  {players.length === 0 && (
-                    <tr><td colSpan={7} className="py-16 text-center text-slate-500 italic font-light tracking-wide">リストが空です。ロビーから取得するか手動で追加してください。</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </section>
-          </div>
-
-          <div className="space-y-6 text-slate-200">
-            <section className="bg-slate-800/50 backdrop-blur-sm p-6 rounded-xl border border-slate-700 shadow-xl">
-              <h2 className="text-lg font-semibold mb-6 text-blue-400">チーム分け実行</h2>
-              <div className="space-y-6">
-                <div className="flex items-center justify-between text-sm bg-slate-900/50 p-4 rounded-lg border border-slate-700">
-                  <label className="text-slate-400 font-medium">許容ランク誤差:</label>
-                  <div className="flex items-center gap-3">
-                    <input 
-                      type="number" 
-                      className="w-20 bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-center font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all"
-                      value={tolerance}
-                      onChange={(e) => setTolerance(parseInt(e.target.value) || 0)}
-                    />
-                  </div>
-                </div>
-                <button 
-                  onClick={handleDivide}
-                  disabled={players.length < 10}
-                  className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:opacity-40 py-4 rounded-xl font-bold transition shadow-lg shadow-emerald-900/20 active:scale-[0.98] text-white"
-                >
-                  チーム分け実行
-                </button>
-              </div>
-
-              {result && (
-                <div className="mt-8 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase tracking-widest border-b border-slate-700 pb-3">
-                    <span>MATCH PREVIEW</span>
-                    <span className="text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full border border-emerald-400/20 font-mono">Diff: {result.diff}</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2.5">
-                      <p className="text-[10px] font-bold text-blue-400 flex items-center justify-between px-1">
-                        <span>TEAM 1 <span className="text-slate-500 font-normal ml-1">({getAverageRank(result.score1)})</span></span>
-                        <span className="font-mono">{result.score1}</span>
-                      </p>
-                      {result.team1.map((p, i) => (
-                        <div key={i} className="bg-slate-900/40 p-2.5 rounded-lg border border-slate-700/50 shadow-inner group">
-                          <span className="text-slate-500 font-mono text-[9px] mr-2 inline-block w-6 uppercase group-hover:text-blue-400 transition-colors">{p.role}</span>
-                          <span className="font-medium truncate block text-xs">{p.name}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="space-y-2.5">
-                      <p className="text-[10px] font-bold text-red-400 flex items-center justify-between px-1">
-                        <span>TEAM 2 <span className="text-slate-500 font-normal ml-1">({getAverageRank(result.score2)})</span></span>
-                        <span className="font-mono">{result.score2}</span>
-                      </p>
-                      {result.team2.map((p, i) => (
-                        <div key={i} className="bg-slate-900/40 p-2.5 rounded-lg border border-slate-700/50 shadow-inner group">
-                          <span className="text-slate-500 font-mono text-[9px] mr-2 inline-block w-6 uppercase group-hover:text-red-400 transition-colors">{p.role}</span>
-                          <span className="font-medium truncate block text-xs">{p.name}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="pt-6 space-y-3">
-                    <button onClick={() => copyResults()} className="w-full flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 py-3 rounded-lg text-xs font-semibold transition-all active:scale-[0.97] text-white border border-slate-600 shadow-sm"><Copy size={14} /> 結果コピー</button>
-                    <button onClick={() => copyResults('opgg')} className="w-full flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 py-3 rounded-lg text-xs font-semibold transition-all active:scale-[0.97] text-blue-300 border border-slate-600 shadow-sm"><ExternalLink size={14} /> OPGGコピー</button>
-                    {statusMsg && <p className="text-center text-[10px] text-emerald-400 font-medium animate-pulse">{statusMsg}</p>}
-                  </div>
-                </div>
-              )}
-            </section>
-
-            <section className="bg-slate-800/50 backdrop-blur-sm p-6 rounded-xl border border-slate-700 shadow-xl mt-6">
-              <h2 className="text-lg font-semibold mb-4 text-blue-400">対戦履歴</h2>
-              <div className="space-y-4">
-                <button
-                  onClick={handleFetchMatches}
-                  disabled={isLoadingMatches}
-                  className="w-full bg-purple-600 hover:bg-purple-500 disabled:bg-slate-700 disabled:opacity-40 py-3 rounded-xl font-bold transition shadow-lg shadow-purple-900/20 active:scale-[0.98] text-white"
-                >
-                  {isLoadingMatches ? '取得中...' : '対戦履歴を取得'}
-                </button>
-                {matches.length > 0 && (
-                  <select
-                    value={selectedMatchId}
-                    onChange={(e) => setSelectedMatchId(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                  >
-                    <option value="">試合を選択...</option>
-                    {matches.map(match => (
-                      <option key={match.id} value={match.id}>
-                        {new Date(match.timestamp).toLocaleString()} - {match.outcome} ({match.kda})
-                      </option>
-                    ))}
-                  </select>
-                )}
-                {selectedMatch && (
-                  <div className="mt-4 space-y-3 bg-slate-900/50 p-4 rounded-lg border border-slate-700 animate-in fade-in">
-                    <h3 className="text-md font-bold text-slate-200">試合詳細</h3>
-                    <p><strong>結果:</strong> <span className={selectedMatch.outcome === 'Victory' ? 'text-green-400' : 'text-red-400'}>{selectedMatch.outcome}</span></p>
-                    <p><strong>KDA:</strong> {selectedMatch.kda}</p>
-                    <p><strong>チャンピオン:</strong> {selectedMatch.champion}</p>
-                    <p><strong>試合日時:</strong> {new Date(selectedMatch.timestamp).toLocaleString()}</p>
-                  </div>
-                )}
-              </div>
-            </section>
             
-            <footer className="flex flex-col items-center gap-4 text-slate-500 pt-4">
-               <div className="flex gap-6">
-                  <a href="https://x.com/yamadalter" target="_blank" rel="noreferrer" className="hover:text-blue-400 transition-colors"><Twitter size={20} /></a>
-                  <a href="https://github.com/yamadalter/LOLCustomTool" target="_blank" rel="noreferrer" className="hover:text-white transition-colors"><Github size={20} /></a>
-               </div>
-               <div className="text-[10px] text-center space-y-1 font-mono tracking-tight opacity-50">
-                 <p>VERSION {VERSION}</p>
-                 <p>© 2026 Produced by yamadalter</p>
-               </div>
-            </footer>
+            <TeamResults
+              result={result}
+              onCopy={copyResults}
+              statusMsg={statusMsg}
+            />
+
+            <PlayerList
+              players={players}
+              tolerance={tolerance}
+              onToleranceChange={(e) => setTolerance(parseInt(e.target.value) || 0)}
+              onDivide={handleDivide}
+              onClear={() => setPlayers([])}
+              onUpdatePlayer={updatePlayer}
+              onCheckAllRoles={checkAllRoles}
+              onRemovePlayer={removePlayer}
+            />
+          </div>
+          <div className="md:col-span-3 space-y-6">
+            <MatchHistory
+              lcuInfo={lcuInfo}
+              isLoading={isLoadingMatches}
+              isUploading={isUploading}
+              onFetch={handleFetchMatches}
+              onUpload={handleUploadMatch}
+              matches={matches}
+              selectedMatchId={selectedMatchId}
+              onSelectMatch={setSelectedMatchId}
+              currentUserPuuid={currentUserPuuid}
+              selectedMatch={selectedMatch}
+            />
           </div>
         </div>
+        <footer className="flex flex-col items-center gap-4 text-slate-500 pt-8 mt-8 border-t border-slate-800">
+           <div className="flex gap-6">
+              <a href="https://x.com/yamadalter" target="_blank" rel="noreferrer" className="hover:text-blue-400 transition-colors"><Twitter size={20} /></a>
+              <a href="https://github.com/yamadalter/LOLCustomTool" target="_blank" rel="noreferrer" className="hover:text-white transition-colors"><Github size={20} /></a>
+           </div>
+           <div className="text-[10px] text-center space-y-1 font-mono tracking-tight opacity-50">
+             <p>VERSION {VERSION}</p>
+             <p>© 2026 Produced by yamadalter</p>
+           </div>
+        </footer>
       </div>
     </div>
   );
