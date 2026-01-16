@@ -121,17 +121,16 @@ def upload_match_data(d, engine):
             
             participantId = p.get('participantId')
             
-            stats = p.pop('stats', {})
+            stats = p.pop('stats', None)
             stats['participantId'] = participantId
             stats['gameId'] = gameId
             stats['puuid'] = p.get('puuid')
             
-            player = p.pop('player', {})
+            player = p.pop('player', None)
             p.pop('timeline', None)
             
             df_participants = pd.concat([df_participants, pd.json_normalize(p)])
-            if player:
-                df_player = pd.concat([df_player, pd.json_normalize(player)])
+            df_player = pd.concat([df_player, pd.json_normalize(player)])
             df_stats = pd.concat([df_stats, pd.json_normalize(stats)])
 
         # インデックスを設定
