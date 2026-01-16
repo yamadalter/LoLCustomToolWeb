@@ -1,7 +1,7 @@
 from http.server import BaseHTTPRequestHandler
 import json
 import traceback
-from .db_handler import get_engine, initialize_database, upload_match_data
+from db_handler import get_engine, initialize_database, upload_match_data
 
 class handler(BaseHTTPRequestHandler):
 
