@@ -1,7 +1,7 @@
 import os
 import datetime
 import pandas as pd
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy_utils import database_exists, create_database
 from pangres import upsert
 # create_table.py は同じapiディレクトリにあることを想定
@@ -45,12 +45,12 @@ def initialize_database(engine):
     with engine.connect() as conn:
         try:
             # テーブル作成
-            conn.execute(create_game_table)
-            conn.execute(create_team_table)
-            conn.execute(create_bans_table)
-            conn.execute(create_player_table)
-            conn.execute(create_stats_table)
-            conn.execute(create_participants_table)
+            conn.execute(text(create_game_table))
+            conn.execute(text(create_team_table))
+            conn.execute(text(create_bans_table))
+            conn.execute(text(create_player_table))
+            conn.execute(text(create_stats_table))
+            conn.execute(text(create_participants_table))
             print("Tables created or already exist.")
         except Exception as e:
             print(f"Error creating tables: {e}")
