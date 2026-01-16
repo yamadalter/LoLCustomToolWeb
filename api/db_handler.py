@@ -5,7 +5,7 @@ from sqlalchemy import create_engine
 from sqlalchemy_utils import database_exists, create_database
 from pangres import upsert
 # create_table.py は同じapiディレクトリにあることを想定
-from create_table import (
+from .create_table import (
     create_game_table,
     create_team_table,
     create_bans_table,
