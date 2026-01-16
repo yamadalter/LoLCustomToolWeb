@@ -74,7 +74,7 @@ def upload_match_data(d, engine):
         d["region"] = 'JP'
         matchdata = MatchData()
         d = matchdata(**d).to_dict()
-        d.pop('participantIdentities', None)
+        participantIdentities = d.pop('participantIdentities', None)
         participants = d.pop('participants', None)
         teams = d.pop('teams', None)
 
@@ -111,6 +111,11 @@ def upload_match_data(d, engine):
         
         # participantsデータ処理
         for p in participants:
+
+            for identity in participantIdentities:
+                if p['participantId'] == identity['participantId']:
+                    p['player'] = identity['player']
+            
             p['puuid'] = p.get('player', {}).get('puuid')
             p['gameId'] = gameId
 
@@ -127,7 +132,6 @@ def upload_match_data(d, engine):
             stats['puuid'] = p.get('puuid')
             
             player = p.pop('player', None)
-            print(player)
             p.pop('timeline', None)
             
             df_participants = pd.concat([df_participants, pd.json_normalize(p)])
