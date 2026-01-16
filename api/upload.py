@@ -1,3 +1,11 @@
+import socket
+import platform
+
+# Vercel's dev server on Windows lacks AF_UNIX. This patch prevents a crash in the Vercel runtime.
+if platform.system() == "Windows":
+    if not hasattr(socket, 'AF_UNIX'):
+        socket.AF_UNIX = -1
+
 from http.server import BaseHTTPRequestHandler
 import json
 import traceback
