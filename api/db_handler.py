@@ -73,7 +73,7 @@ def upload_match_data(d, engine):
         # データフレームに変換
         d["region"] = 'JP'
         matchdata = MatchData()
-        d = matchdata(**d)
+        d = matchdata(**d).to_dict()
         print(d)
         d.pop('participantIdentities', None)
         participants = d.pop('participants', None)
