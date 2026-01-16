@@ -12,6 +12,7 @@
     }
   ],
   "rewrites": [
+    { "source": "/api/upload", "destination": "/api/upload.py" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
