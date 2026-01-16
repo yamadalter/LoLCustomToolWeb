@@ -74,7 +74,6 @@ def upload_match_data(d, engine):
         d["region"] = 'JP'
         matchdata = MatchData()
         d = matchdata(**d).to_dict()
-        print(d)
         d.pop('participantIdentities', None)
         participants = d.pop('participants', None)
         teams = d.pop('teams', None)
@@ -86,7 +85,6 @@ def upload_match_data(d, engine):
         if d.get('gameCreationDate'):
             df_game['gameCreationDate'] = str(datetime.datetime.strptime(d['gameCreationDate'], '%Y-%m-%dT%H:%M:%S.%fZ'))
         
-        print(d)
         gameId = d.get('id')
         if not gameId:
             raise ValueError("gameId is missing from match data")
@@ -139,14 +137,19 @@ def upload_match_data(d, engine):
         # インデックスを設定
         df_game = df_game.set_index('id')
         if not df_player.empty:
+            df_player.drop_duplicates(subset=['puuid'], keep='first', inplace=True)
             df_player = df_player.set_index('puuid')
         if not df_teams.empty:
+            df_teams.drop_duplicates(subset=['gameId', 'teamId'], keep='first', inplace=True)
             df_teams = df_teams.set_index(['gameId', 'teamId'])
         if not df_bans.empty:
+            df_bans.drop_duplicates(subset=['gameId', 'teamId', 'pickTurn'], keep='first', inplace=True)
             df_bans = df_bans.set_index(['gameId', 'teamId', 'pickTurn'])
         if not df_stats.empty:
+            df_stats.drop_duplicates(subset=['participantId', 'gameId'], keep='first', inplace=True)
             df_stats = df_stats.set_index(['participantId', 'gameId'])
         if not df_participants.empty:
+            df_participants.drop_duplicates(subset=['participantId', 'gameId'], keep='first', inplace=True)
             df_participants = df_participants.set_index(['participantId', 'gameId'])
 
         # データフレームをデータベースに登録
