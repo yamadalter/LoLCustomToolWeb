@@ -70,9 +70,13 @@ def upload_match_data(d, engine):
         df_bans = pd.DataFrame([])
 
         # データフレームに変換
+        print(d)
         d.pop('participantIdentities', None)
+        print(d)
         participants = d.pop('participants', None)
+        print(participants)
         teams = d.pop('teams', None)
+        print(teams)
 
         df_game = pd.json_normalize(d)
         df_game['duration'] = str(d.get('duration'))
@@ -81,6 +85,7 @@ def upload_match_data(d, engine):
         if d.get('gameCreationDate'):
             df_game['gameCreationDate'] = str(datetime.datetime.strptime(d['gameCreationDate'], '%Y-%m-%dT%H:%M:%S.%fZ'))
         
+        print(d)
         gameId = d.get('id')
         if not gameId:
             raise ValueError("gameId is missing from match data")
