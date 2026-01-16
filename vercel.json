@@ -13,8 +13,8 @@
   ],
   "routes": [
     {
-      "src": "api/(.*)",
-      "dest": "api/uploadd.py"
+      "src": "/api/(.*)",
+      "dest": "/api/upload.py"
     }
   ]
 }
