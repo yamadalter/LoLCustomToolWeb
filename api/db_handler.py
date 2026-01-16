@@ -127,10 +127,12 @@ def upload_match_data(d, engine):
             stats['puuid'] = p.get('puuid')
             
             player = p.pop('player', None)
+            print(player)
             p.pop('timeline', None)
             
             df_participants = pd.concat([df_participants, pd.json_normalize(p)])
-            df_player = pd.concat([df_player, pd.json_normalize(player)])
+            if player:
+                df_player = pd.concat([df_player, pd.json_normalize(player)])
             df_stats = pd.concat([df_stats, pd.json_normalize(stats)])
 
         # インデックスを設定
