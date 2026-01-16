@@ -4,6 +4,7 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 from sqlalchemy_utils import database_exists, create_database
 from pangres import upsert
+from cassiopeia.core.match import MatchData
 # create_table.py は同じapiディレクトリにあることを想定
 from .create_table import (
     create_game_table,
@@ -70,13 +71,13 @@ def upload_match_data(d, engine):
         df_bans = pd.DataFrame([])
 
         # データフレームに変換
+        d["region"] = 'JP'
+        matchdata = MatchData()
+        d = matchdata(**d)
         print(d)
         d.pop('participantIdentities', None)
-        print(d)
         participants = d.pop('participants', None)
-        print(participants)
         teams = d.pop('teams', None)
-        print(teams)
 
         df_game = pd.json_normalize(d)
         df_game['duration'] = str(d.get('duration'))
