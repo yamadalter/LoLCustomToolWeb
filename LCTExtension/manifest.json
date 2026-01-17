@@ -4,7 +4,10 @@
   "version": "1.0",
   "permissions": ["scripting"],
   "host_permissions": [
-    "https://*/*"
+    "https://127.0.0.1/*",
+    "http://localhost:3000/*",
+    "https://yamadalter.github.io/LOLCustomTool/*",
+    "https://lo-l-custom-tool-web.vercel.app/*"
   ],
   "background": {
     "service_worker": "background.js"
