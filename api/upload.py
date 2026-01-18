@@ -47,14 +47,18 @@ class handler(BaseHTTPRequestHandler):
             initialize_database(engine) 
             
             # データアップロード
-            upload_match_data(match_data, engine)
+            updated_ratings = upload_match_data(match_data, engine)
             
             # 成功レスポンス
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self._send_cors_headers()
             self.end_headers()
-            self.wfile.write(json.dumps({'message': 'Match data uploaded successfully'}).encode('utf-8'))
+            response = {
+                'message': 'Match data uploaded successfully',
+                'updated_ratings': updated_ratings
+            }
+            self.wfile.write(json.dumps(response).encode('utf-8'))
 
         except Exception as e:
             # エラーレスポンス

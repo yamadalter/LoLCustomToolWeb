@@ -1,54 +1,81 @@
 import React from 'react';
-import { Copy, ExternalLink } from 'lucide-react';
-import { RANK_DATA } from '../constants';
+import { Copy, ExternalLink, Loader2 } from 'lucide-react';
 
-const TeamResults = ({ result, onCopy, statusMsg }) => {
-  const getAverageRank = (score) => {
-    const avg = score / 5;
-    const closest = RANK_DATA.reduce((prev, curr) =>
-      Math.abs(curr.val - avg) < Math.abs(prev.val - avg) ? curr : prev
-    );
-    return closest.name;
-  };
+const TeamResults = ({ result, teams, onCopy, statusMsg, isGeneratingTeams, generateTeamsError }) => {
+  const displayData = teams || result;
+  const scoreA = teams?.scoreA || result?.score1;
+  const scoreB = teams?.scoreB || result?.score2;
+  const teamA = teams?.teamA || result?.team1;
+  const teamB = teams?.teamB || result?.team2;
+
+  // レート差を計算
+  const diff = (scoreA !== undefined && scoreB !== undefined) ? Math.abs(scoreA - scoreB).toFixed(2) : (result?.diff || 'N/A');
 
   return (
-    <section className="bg-slate-800/50 backdrop-blur-sm p-6 rounded-xl border border-slate-700 shadow-xl">
+    <section className="bg-slate-800/50 backdrop-blur-sm p-6 rounded-xl border border-slate-700 shadow-xl min-h-[300px] flex flex-col">
       <h2 className="text-lg font-semibold mb-4 text-blue-400">チーム分け結果</h2>
 
-      {!result && (
-        <div className="h-full flex items-center justify-center text-center text-slate-500 italic py-16">
-          プレイヤーリストの上部にあるボタンからチーム分けを実行してください。
+      {isGeneratingTeams && (
+        <div className="flex-grow flex items-center justify-center text-center text-slate-400">
+          <div className="flex flex-col items-center gap-2">
+            <Loader2 size={32} className="animate-spin" />
+            <p>レートを計算してチーム分けを実行中...</p>
+          </div>
         </div>
       )}
 
-      {result && (
+      {!isGeneratingTeams && generateTeamsError && (
+        <div className="flex-grow flex items-center justify-center text-center text-red-400 bg-red-500/10 rounded-lg p-4">
+          <p>エラー: {generateTeamsError}</p>
+        </div>
+      )}
+
+      {!isGeneratingTeams && !generateTeamsError && !displayData && (
+        <div className="flex-grow flex items-center justify-center text-center text-slate-500 italic">
+          プレイヤーを選択して「レートでチーム分け」ボタンを押してください。
+        </div>
+      )}
+
+      {!isGeneratingTeams && !generateTeamsError && displayData && (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase tracking-widest border-b border-slate-700 pb-3">
             <span>MATCH PREVIEW</span>
-            <span className="text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full border border-emerald-400/20 font-mono">Diff: {result.diff}</span>
+            <span className="text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full border border-emerald-400/20 font-mono">
+              Diff: {diff}
+            </span>
           </div>
           <div className="grid grid-cols-2 gap-4">
+            {/* TEAM A */}
             <div className="space-y-2.5">
               <p className="text-[10px] font-bold text-blue-400 flex items-center justify-between px-1">
-                <span>TEAM 1 <span className="text-slate-500 font-normal ml-1">({getAverageRank(result.score1)})</span></span>
-                <span className="font-mono">{result.score1}</span>
+                <span>TEAM 1</span>
+                <span className="font-mono">{scoreA}</span>
               </p>
-              {result.team1.map((p, i) => (
-                <div key={i} className="bg-slate-900/40 p-2.5 rounded-lg border border-slate-700/50 shadow-inner group">
-                  <span className="text-slate-500 font-mono text-[9px] mr-2 inline-block w-6 uppercase group-hover:text-blue-400 transition-colors">{p.role}</span>
-                  <span className="font-medium truncate block text-xs">{p.name}</span>
+              {teamA.map((p, i) => (
+                <div key={p.puuid || i} className="bg-slate-900/40 p-2.5 rounded-lg border border-slate-700/50 shadow-inner group">
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium truncate block text-xs">{p.displayName || p.name}</span>
+                    <span className="text-slate-500 font-mono text-[9px] group-hover:text-blue-400 transition-colors">
+                      {p.mu?.toFixed(2) || p.role}
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>
+            {/* TEAM B */}
             <div className="space-y-2.5">
               <p className="text-[10px] font-bold text-red-400 flex items-center justify-between px-1">
-                <span>TEAM 2 <span className="text-slate-500 font-normal ml-1">({getAverageRank(result.score2)})</span></span>
-                <span className="font-mono">{result.score2}</span>
+                <span>TEAM 2</span>
+                <span className="font-mono">{scoreB}</span>
               </p>
-              {result.team2.map((p, i) => (
-                <div key={i} className="bg-slate-900/40 p-2.5 rounded-lg border border-slate-700/50 shadow-inner group">
-                  <span className="text-slate-500 font-mono text-[9px] mr-2 inline-block w-6 uppercase group-hover:text-red-400 transition-colors">{p.role}</span>
-                  <span className="font-medium truncate block text-xs">{p.name}</span>
+              {teamB.map((p, i) => (
+                <div key={p.puuid || i} className="bg-slate-900/40 p-2.5 rounded-lg border border-slate-700/50 shadow-inner group">
+                   <div className="flex justify-between items-center">
+                    <span className="font-medium truncate block text-xs">{p.displayName || p.name}</span>
+                    <span className="text-slate-500 font-mono text-[9px] group-hover:text-red-400 transition-colors">
+                      {p.mu?.toFixed(2) || p.role}
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>

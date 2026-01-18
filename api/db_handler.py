@@ -4,6 +4,7 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 from sqlalchemy_utils import database_exists, create_database
 from pangres import upsert
+import trueskill
 from cassiopeia.core.match import MatchData
 # create_table.py は同じapiディレクトリにあることを想定
 from .create_table import (
@@ -11,6 +12,8 @@ from .create_table import (
     create_team_table,
     create_bans_table,
     create_player_table,
+    create_player_ratings_table, # 追加
+    create_rating_history_table, # 追加
     create_stats_table,
     create_participants_table,
 )
@@ -50,8 +53,11 @@ def initialize_database(engine):
             conn.execute(text(create_team_table))
             conn.execute(text(create_bans_table))
             conn.execute(text(create_player_table))
+            conn.execute(text(create_player_ratings_table)) # 追加
+            conn.execute(text(create_rating_history_table)) # 追加
             conn.execute(text(create_stats_table))
             conn.execute(text(create_participants_table))
+            conn.commit()
             print("Tables created or already exist.")
         except Exception as e:
             print(f"Error creating tables: {e}")
@@ -93,7 +99,6 @@ def upload_match_data(d, engine):
         for team in teams:
             team['gameId'] = gameId
             
-            # teamId(100/200)に基づいてsideを設定し、teamIdを0/1に正規化
             is_blue_team = team.get('teamId') == 100
             normalized_team_id = 0 if is_blue_team else 1
 
@@ -101,7 +106,7 @@ def upload_match_data(d, engine):
             team['teamId'] = normalized_team_id
 
             bans = team.pop('bans', None)
-            team.pop('participants', None) # 不要なキーを削除
+            team.pop('participants', None)
             df_teams = pd.concat([df_teams, pd.json_normalize(team)])
             if bans:
                 for ban in bans:
@@ -111,7 +116,6 @@ def upload_match_data(d, engine):
         
         # participantsデータ処理
         for p in participants:
-
             for identity in participantIdentities:
                 if p['participantId'] == identity['participantId']:
                     p['player'] = identity['player']
@@ -119,7 +123,6 @@ def upload_match_data(d, engine):
             p['puuid'] = p.get('player', {}).get('puuid')
             p['gameId'] = gameId
 
-            # teamId(100/200)に基づいてsideを設定し、teamIdを0/1に正規化
             is_blue_team = p.get('teamId') == 100
             p['side'] = 'blue' if is_blue_team else 'red'
             p['teamId'] = 0 if is_blue_team else 1
@@ -156,21 +159,107 @@ def upload_match_data(d, engine):
         if not df_participants.empty:
             df_participants.drop_duplicates(subset=['participantId', 'gameId'], keep='first', inplace=True)
             df_participants = df_participants.set_index(['participantId', 'gameId'])
+            
+            # positionをlaneにリネーム
+            df_participants.rename(columns={'position': 'lane'}, inplace=True)
+            
+            all_puuids = df_participants['puuid'].unique().tolist()
+            
+            # 既存プレイヤーの全レーンレートを取得
+            query = text("SELECT puuid, lane, mu, sigma FROM player_ratings WHERE puuid IN :puuids")
+            with engine.connect() as conn:
+                # all_puuidsが空でないことを確認
+                if all_puuids:
+                    existing_ratings_df = pd.read_sql(query, conn, params={'puuids': tuple(all_puuids)})
+                else:
+                    existing_ratings_df = pd.DataFrame(columns=['puuid', 'lane', 'mu', 'sigma'])
 
-        # データフレームをデータベースに登録
-        upsert(con=engine, df=df_game, table_name='game', if_row_exists='update', add_new_columns=True, create_table=False)
-        if not df_player.empty:
-            upsert(con=engine, df=df_player, table_name='player', if_row_exists='update', add_new_columns=True, create_table=False)
-        if not df_teams.empty:
-            upsert(con=engine, df=df_teams, table_name='team', if_row_exists='update', add_new_columns=True, create_table=False)
-        if not df_bans.empty:
-            upsert(con=engine, df=df_bans, table_name='bans', if_row_exists='update', add_new_columns=True, create_table=False)
-        if not df_stats.empty:
-            upsert(con=engine, df=df_stats, table_name='stats', if_row_exists='update', add_new_columns=True, create_table=False)
-        if not df_participants.empty:
-            upsert(con=engine, df=df_participants, table_name='participants', if_row_exists='update', add_new_columns=True, create_table=False)
+            # (puuid, lane)をキーとするRatingオブジェクトの辞書を作成
+            existing_ratings = {
+                (row['puuid'], row['lane']): trueskill.Rating(mu=row['mu'], sigma=row['sigma'])
+                for _, row in existing_ratings_df.iterrows()
+            }
+
+            # 試合参加者のRatingオブジェクトを準備
+            player_ratings = {
+                (row['puuid'], row['lane']): existing_ratings.get((row['puuid'], row['lane']), trueskill.Rating())
+                for _, row in df_participants.iterrows()
+            }
+
+            # チーム分け
+            team0_ratings_dict = {
+                (puuid, lane): rating for (puuid, lane), rating in player_ratings.items()
+                if puuid in df_participants[df_participants['teamId'] == 0]['puuid'].values
+            }
+            team1_ratings_dict = {
+                (puuid, lane): rating for (puuid, lane), rating in player_ratings.items()
+                if puuid in df_participants[df_participants['teamId'] == 1]['puuid'].values
+            }
+
+            # 勝敗ランクを設定
+            winner_team_id_series = df_teams.loc[df_teams['isWinner'] == 'Win', 'teamId']
+            if winner_team_id_series.empty:
+                raise ValueError("Winner team not found in match data. Remake game?")
+            winner_team_id = winner_team_id_series.iloc[0]
+            ranks = [0, 1] if winner_team_id == 0 else [1, 0]
+
+            # レート計算
+            new_team0_ratings, new_team1_ratings = trueskill.rate([team0_ratings_dict, team1_ratings_dict], ranks=ranks)
+
+            # 更新用DataFrame作成
+            updated_ratings = {**new_team0_ratings, **new_team1_ratings}
+            new_ratings_list = [
+                {'puuid': key[0], 'lane': key[1], 'mu': rating.mu, 'sigma': rating.sigma}
+                for key, rating in updated_ratings.items()
+            ]
+            df_player_ratings = pd.DataFrame(new_ratings_list)
+            
+            if not df_player_ratings.empty:
+                df_player_ratings.set_index(['puuid', 'lane'], inplace=True)
+
+                # レーティング履歴の記録
+                history_list = []
+                for (puuid, lane), new_rating in updated_ratings.items():
+                    old_rating = player_ratings.get((puuid, lane), trueskill.Rating())
+                    history_list.append({
+                        'puuid': puuid,
+                        'lane': lane,
+                        'gameId': gameId,
+                        'mu_before': old_rating.mu,
+                        'sigma_before': old_rating.sigma,
+                        'mu_after': new_rating.mu,
+                        'sigma_after': new_rating.sigma,
+                    })
+                df_rating_history = pd.DataFrame(history_list)
+                if not df_rating_history.empty:
+                    df_rating_history.set_index(['puuid', 'lane', 'gameId'], inplace=True)
+
         
-        return True
+        # データフレームをデータベースに登録
+        with engine.connect() as conn:
+            trans = conn.begin()
+            try:
+                upsert(con=conn, df=df_game, table_name='game', if_row_exists='update', add_new_columns=True, create_table=False)
+                if not df_player.empty:
+                    upsert(con=conn, df=df_player, table_name='player', if_row_exists='update', add_new_columns=True, create_table=False)
+                if not df_teams.empty:
+                    upsert(con=conn, df=df_teams, table_name='team', if_row_exists='update', add_new_columns=True, create_table=False)
+                if not df_bans.empty:
+                    upsert(con=conn, df=df_bans, table_name='bans', if_row_exists='update', add_new_columns=True, create_table=False)
+                if not df_stats.empty:
+                    upsert(con=conn, df=df_stats, table_name='stats', if_row_exists='update', add_new_columns=True, create_table=False)
+                if not df_participants.empty:
+                    upsert(con=conn, df=df_participants, table_name='participants', if_row_exists='update', add_new_columns=True, create_table=False)
+                if not df_player_ratings.empty:
+                    upsert(con=conn, df=df_player_ratings, table_name='player_ratings', if_row_exists='update', add_new_columns=True, create_table=False)
+                if not df_rating_history.empty:
+                    upsert(con=conn, df=df_rating_history, table_name='rating_history', if_row_exists='update', add_new_columns=True, create_table=False)
+                trans.commit()
+            except Exception:
+                trans.rollback()
+                raise
+        
+        return df_player_ratings.reset_index().to_dict(orient='records')
 
     except Exception as e:
         print(f"Upload process failed: {e}")

@@ -1,12 +1,10 @@
 import React from 'react';
-import { Trash2, Settings } from 'lucide-react';
-import { ROLES, RANK_DATA } from '../constants';
+import { Trash2, Settings, Swords } from 'lucide-react';
+import { ROLES } from '../constants';
 
 const PlayerList = ({
   players,
-  tolerance,
-  onToleranceChange,
-  onDivide,
+  onGenerateTeams,
   onClear,
   onUpdatePlayer,
   onCheckAllRoles,
@@ -17,21 +15,13 @@ const PlayerList = ({
       <div className="flex justify-between items-center mb-4 flex-wrap gap-4">
         <h2 className="text-lg font-semibold text-blue-400">プレイヤーリスト ({players.length})</h2>
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <label className="text-slate-400 font-medium text-sm whitespace-nowrap">許容ランク誤差:</label>
-            <input
-              type="number"
-              className="w-16 bg-slate-900 border border-slate-600 rounded-lg px-2 py-1 text-center font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all"
-              value={tolerance}
-              onChange={onToleranceChange}
-            />
-          </div>
           <button
-            onClick={onDivide}
-            disabled={players.length < 10}
-            className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:opacity-40 px-6 py-2 rounded-lg font-bold transition shadow-md shadow-emerald-900/20 active:scale-[0.98] text-white text-sm whitespace-nowrap"
+            onClick={onGenerateTeams}
+            disabled={players.length < 2}
+            className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:opacity-40 px-6 py-2 rounded-lg font-bold transition shadow-md shadow-emerald-900/20 active:scale-[0.98] text-white text-sm whitespace-nowrap flex items-center gap-2"
           >
-            チーム分け実行
+            <Swords size={16} />
+            レートでチーム分け
           </button>
           <button onClick={onClear} className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1 transition-colors">
             <Trash2 size={12} /> 全削除
@@ -59,16 +49,13 @@ const PlayerList = ({
                       onChange={(e) => onUpdatePlayer(p.id, role, e.target.checked)}
                       className="w-4 h-4 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-600 transition-all cursor-pointer"
                     />
-                    <select
-                      className="text-[9px] bg-slate-900/50 border border-slate-700/50 rounded px-1.5 py-0.5 cursor-pointer font-bold tracking-tighter"
-                      style={{ color: RANK_DATA.find(r => r.name === p[`${role}_rank`])?.color }}
-                      value={p[`${role}_rank`]}
-                      onChange={(e) => onUpdatePlayer(p.id, `${role}_rank`, e.target.value)}
-                    >
-                      {RANK_DATA.map(r => (
-                        <option key={r.tag} value={r.name}>{r.tag}</option>
-                      ))}
-                    </select>
+                    <input
+                      type="number"
+                      step="0.1"
+                      className="w-16 bg-slate-900/50 border border-slate-700/50 rounded px-2 py-1 text-center font-mono text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all"
+                      value={p[`${role}_rate`] || ''}
+                      onChange={(e) => onUpdatePlayer(p.id, `${role}_rate`, parseFloat(e.target.value) || 0)}
+                    />
                   </div>
                 </td>
               ))}

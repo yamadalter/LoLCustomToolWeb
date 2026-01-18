@@ -4,3 +4,6 @@ sqlalchemy-utils
 pangres
 pymysql
 cassiopeia
+trueskill
+python-dotenv
+Flask

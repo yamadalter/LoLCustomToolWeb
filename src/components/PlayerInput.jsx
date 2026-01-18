@@ -5,8 +5,8 @@ import { RANK_DATA } from '../constants';
 const PlayerInput = ({
   inputName,
   onInputNameChange,
-  inputRank,
-  onInputRankChange,
+  inputRate,
+  onInputRateChange,
   onAddPlayer,
 }) => {
   return (
@@ -24,12 +24,14 @@ const PlayerInput = ({
           onKeyPress={(e) => e.key === 'Enter' && onAddPlayer()}
         />
         <select
-          className="bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-          value={inputRank}
-          onChange={onInputRankChange}
+          className="bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 w-48 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+          value={inputRate}
+          onChange={onInputRateChange}
         >
-          {RANK_DATA.map(r => (
-            <option key={r.name} value={r.name}>{r.name}</option>
+          {RANK_DATA.map((rank) => (
+            <option key={rank.name} value={rank.val}>
+              {rank.name} ({rank.val})
+            </option>
           ))}
         </select>
         <button

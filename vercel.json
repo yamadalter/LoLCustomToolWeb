@@ -13,8 +13,19 @@
   ],
   "routes": [
     {
-      "src": "/api/(.*)",
-      "dest": "/api/upload.py"
+      "src": "/api/get_ratings",
+      "dest": "api/generate_teams.py"
+    },
+    {
+      "src": "/api/upload",
+      "dest": "api/upload.py"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
   ]
 }

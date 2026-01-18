@@ -75,6 +75,33 @@ CREATE TABLE IF NOT EXISTS player (
 )
 """
 
+create_player_ratings_table = """
+CREATE TABLE IF NOT EXISTS player_ratings (
+    puuid VARCHAR(255),
+    lane VARCHAR(255),
+    mu FLOAT DEFAULT 25.0,
+    sigma FLOAT DEFAULT 8.333,
+    PRIMARY KEY (puuid, lane),
+    FOREIGN KEY (puuid) REFERENCES player(puuid)
+)
+"""
+
+create_rating_history_table = """
+CREATE TABLE IF NOT EXISTS rating_history (
+    puuid VARCHAR(255),
+    lane VARCHAR(255),
+    gameId INT,
+    mu_before FLOAT,
+    sigma_before FLOAT,
+    mu_after FLOAT,
+    sigma_after FLOAT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (puuid, lane, gameId),
+    FOREIGN KEY (puuid) REFERENCES player(puuid),
+    FOREIGN KEY (gameId) REFERENCES game(id)
+)
+"""
+
 create_participants_table = """
 CREATE TABLE IF NOT EXISTS participants (
     participantId INT,

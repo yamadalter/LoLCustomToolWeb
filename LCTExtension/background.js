@@ -64,7 +64,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         // 過去の最高ランクと現在のランクを比較して、より高い方を使用
         if (previousSeasonHighestTier !== 'UNRANKED') {
-          const tiers = ['IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'EMERALD', 'DIAMOND', 'MASTER', 'GRANDMASTER', 'CHALLENGER'];
+          const tiers = ['UNRANKED', 'IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'EMERALD', 'DIAMOND', 'MASTER', 'GRANDMASTER', 'CHALLENGER'];
           const currentTierIndex = tiers.indexOf(tier);
           const previousTierIndex = tiers.indexOf(previousSeasonHighestTier);
 

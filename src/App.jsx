@@ -1,27 +1,20 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { 
-  Copy, 
-  ExternalLink,
-  Github,
-  Twitter,
-} from 'lucide-react';
-
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Twitter, Github } from 'lucide-react';
+import { ROLES, RANK_MAP } from './constants';
+import './App.css';
 import Header from './components/Header';
 import PlayerInput from './components/PlayerInput';
-import TeamResults from './components/TeamResults';
 import PlayerList from './components/PlayerList';
+import TeamResults from './components/TeamResults';
 import MatchHistory from './components/MatchHistory';
 
-import { VERSION, ROLES, RANK_DATA, RANK_MAP } from './constants';
 
-// --- Components ---
+const VERSION = "v2.0.0-β.1";
 
-export default function App() {
+function App() {
   const [players, setPlayers] = useState([]);
   const [inputName, setInputName] = useState('');
-  const [inputRank, setInputRank] = useState('SILVER IV');
-  const [tolerance, setTolerance] = useState(5);
-  const [result, setResult] = useState(null);
+  const [inputRate, setInputRate] = useState(1500);
   const [statusMsg, setStatusMsg] = useState('');
   const [lcuInfo, setLcuInfo] = useState(null);
   const [dirHandle, setDirHandle] = useState(null);
@@ -32,6 +25,11 @@ export default function App() {
   const [isLoadingMatches, setIsLoadingMatches] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   
+  // DB-based team generation
+  const [teams, setTeams] = useState(null);
+  const [isGeneratingTeams, setIsGeneratingTeams] = useState(false);
+  const [generateTeamsError, setGenerateTeamsError] = useState(null);
+  
   const [currentUserPuuid, setCurrentUserPuuid] = useState(null);
   
   // Debug State
@@ -39,10 +37,10 @@ export default function App() {
   const [logs, setLogs] = useState([]);
   const logsEndRef = useRef(null);
 
-  const addLog = (type, message, data = null) => {
+  const addLog = useCallback((type, message, data = null) => {
     const timestamp = new Date().toLocaleTimeString();
     setLogs(prev => [...prev, { timestamp, type, message, data: data ? JSON.stringify(data) : null }]);
-  };
+  }, []);
 
   useEffect(() => {
     if (showDebug && logsEndRef.current) {
@@ -66,87 +64,121 @@ export default function App() {
     localStorage.setItem('lol_custom_path', pathDisplay);
   }, [pathDisplay]);
 
-  // 拡張機能からのメッセージを待受
-  useEffect(() => {
-    const handleMessage = (event) => {
-      // セキュリティのためオリジンチェックを入れるのが望ましいが、拡張機能の場合は要検証
-      // if (event.origin !== window.location.origin) return;
-      if (event.data && (event.data.type === 'LCU_LOBBY_DATA_RESPONSE' || event.data.type === 'LCU_ERROR')) {
-        addLog('RECEIVE', `メッセージを受信しました: ${event.data.type}`, event.data);
-      }
-
-      // 自分のウィンドウからのメッセージのみを処理（拡張機能のコンテンツスクリプト経由）
-      if (event.data && event.data.type === 'LCU_LOBBY_DATA_RESPONSE') {
-        setIsLoadingLobby(false);
-        if (event.data.success && event.data.data) {
-          const newPlayers = event.data.data.map(p => {
-          let rank = 'UNRANKED';
+  const handleMessage = useCallback(async (event) => {
+    if (event.data && (event.data.type === 'LCU_LOBBY_DATA_RESPONSE' || event.data.type === 'LCU_ERROR')) {
+      addLog('RECEIVE', `メッセージを受信しました: ${event.data.type}`, event.data);
+    }
+  
+    if (event.data && event.data.type === 'LCU_LOBBY_DATA_RESPONSE') {
+      setIsLoadingLobby(false);
+      if (event.data.success && event.data.data) {
+        const lcuPlayers = event.data.data;
+        const puuids = lcuPlayers.map(p => p.puuid).filter(Boolean);
+  
+        let dbRatings = {};
+        if (puuids.length > 0) {
+          try {
+            addLog('SEND', 'DBからプレイヤーレートを取得します', { puuids });
+            const response = await fetch('/api/get_ratings', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ puuids }),
+            });
+            const ratingsData = await response.json();
+            if (response.ok) {
+              addLog('SUCCESS', 'DBレート取得成功', ratingsData);
+              ratingsData.forEach(p => {
+                dbRatings[p.puuid] = p.mu;
+              });
+            } else {
+              throw new Error(ratingsData.error || 'DBレートの取得に失敗しました。');
+            }
+          } catch (error) {
+            addLog('ERROR', `DBレート取得失敗: ${error.message}`);
+            // エラーでも処理は続行する
+          }
+        }
+  
+        const newPlayers = lcuPlayers.map(p => {
+          const dbRate = dbRatings[p.puuid];
+          
+          let fallbackRate = 1500;
           if (p.tier && p.tier.toUpperCase() !== 'UNRANKED') {
             const tier = p.tier.toUpperCase();
             const division = p.division ? p.division.toUpperCase() : '';
-            // MASTER, GRANDMASTER, CHALLENGERの場合はDivisionを含めない
-            rank = ['MASTER', 'GRANDMASTER', 'CHALLENGER'].includes(tier) ? tier : `${tier} ${division}`.trim();
+            const rankString = ['MASTER', 'GRANDMASTER', 'CHALLENGER'].includes(tier) ? tier : `${tier} ${division}`.trim();
+            fallbackRate = RANK_MAP[rankString] !== undefined ? RANK_MAP[rankString] : 1500;
           }
+          
+          const rate = dbRate !== undefined ? dbRate : fallbackRate;
+  
           return {
-            id: Math.random() + Date.now(),
+            id: p.puuid,
+            puuid: p.puuid,
             name: p.name,
             tag: p.tag || 'JP1',
             ...ROLES.reduce((acc, role) => ({
               ...acc,
-              [`${role}_rank`]: rank,
+              [`${role}_rate`]: rate,
               [role]: true
             }), {})
           };
         });
-                
-        setPlayers(prev => {
-          // 重複チェック
-          const existingNames = new Set(prev.map(p => p.name));
-          const filteredNew = newPlayers.filter(p => !existingNames.has(p.name));
-          return [...prev, ...filteredNew];
+              
+        setPlayers(prevPlayers => {
+          const playerMap = new Map(prevPlayers.map(p => [p.puuid, p]));
+          newPlayers.forEach(p => {
+            playerMap.set(p.puuid, { ...playerMap.get(p.puuid), ...p });
+          });
+          return Array.from(playerMap.values());
         });
-        setStatusMsg(`${newPlayers.length}人のプレイヤーを読み込みました。`);
-        addLog('SUCCESS', `プレイヤー読み込み完了: ${newPlayers.length}人`);
+  
+        setStatusMsg(`${newPlayers.length}人のプレイヤーを読み込み/更新しました。`);
+        addLog('SUCCESS', `プレイヤー読み込み/更新完了: ${newPlayers.length}人`);
         setTimeout(() => setStatusMsg(''), 3000);
-        } else {          const errorMsg = event.data.error || 'ロビー情報の取得に失敗しました。';
-          setStatusMsg(errorMsg);
-          addLog('ERROR', errorMsg);
-          alert(errorMsg);
-        }
-      }else if (event.data && event.data.type === 'LCU_MATCH_HISTORY_DATA_RESPONSE') {
-        setIsLoadingMatches(false);
-        if (event.data.success && event.data.data) {
-          const { games, puuid } = event.data.data;
-
-          let extractedGames = [];
-          if (Array.isArray(games)) {
-            extractedGames = games;
-          } else if (games?.games) {
-            if (Array.isArray(games.games)) {
-              extractedGames = games.games;
-            }
-          }
-
-          setMatches(extractedGames);
-          setCurrentUserPuuid(puuid);
-          setStatusMsg('対戦履歴を取得しました。');
-          addLog('SUCCESS', `対戦履歴取得完了 (PUUID: ${puuid})`);
-        } else {
-          const errorMsg = event.data.error || '対戦履歴の取得に失敗しました。';
-          setStatusMsg(errorMsg);
-          addLog('ERROR', errorMsg);
-          alert(errorMsg);
-        }
-      } else if (event.data && event.data.type === 'LCU_ERROR') {
-        const errorMsg = event.data.error || 'エラーが発生しました。';
-        setIsLoadingLobby(false);   
+  
+      } else {
+        const errorMsg = event.data.error || 'ロビー情報の取得に失敗しました。';
+        setStatusMsg(errorMsg);
+        addLog('ERROR', errorMsg);
+        alert(errorMsg);
       }
-    };
+    } else if (event.data && event.data.type === 'LCU_MATCH_HISTORY_DATA_RESPONSE') {
+      setIsLoadingMatches(false);
+      if (event.data.success && event.data.data) {
+        const { games, puuid } = event.data.data;
 
+        let extractedGames = [];
+        if (Array.isArray(games)) {
+          extractedGames = games;
+        } else if (games?.games) {
+          if (Array.isArray(games.games)) {
+            extractedGames = games.games;
+          }
+        }
+
+        setMatches(extractedGames);
+        setCurrentUserPuuid(puuid);
+        setStatusMsg('対戦履歴を取得しました。');
+        addLog('SUCCESS', `対戦履歴取得完了 (PUUID: ${puuid})`);
+      } else {
+        const errorMsg = event.data.error || '対戦履歴の取得に失敗しました。';
+        setStatusMsg(errorMsg);
+        addLog('ERROR', errorMsg);
+        alert(errorMsg);
+      }
+    } else if (event.data && event.data.type === 'LCU_ERROR') {
+      const errorMsg = event.data.error || 'エラーが発生しました。';
+      setIsLoadingLobby(false);   
+    }
+  }, [addLog, setIsLoadingLobby, setStatusMsg, setMatches, setCurrentUserPuuid]);
+
+  // 拡張機能からのメッセージを待受
+  useEffect(() => {
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, []);
-
+  }, [handleMessage]);
+  
   const isFileSystemApiSupported = typeof window.showDirectoryPicker === 'function';
 
   const parseLockfile = (text) => {
@@ -259,7 +291,7 @@ export default function App() {
     }, 5000);
   }, [lcuInfo, addLog]);
 
-  const addPlayer = (name = inputName, rank = inputRank) => {
+  const addPlayer = (name = inputName, rate = inputRate) => {
     if (!name.trim()) return;
     const newPlayer = {
       id: Date.now() + Math.random(),
@@ -267,7 +299,7 @@ export default function App() {
       tag: 'JP1',
       ...ROLES.reduce((acc, role) => ({
         ...acc,
-        [`${role}_rank`]: rank,
+        [`${role}_rate`]: rate,
         [role]: true
       }), {})
     };
@@ -294,81 +326,114 @@ export default function App() {
     }));
   };
 
-  const handleDivide = () => {
+  const handleGenerateTeams = async () => {
+    setTeams(null);
+    setGenerateTeamsError(null);
+    setIsGeneratingTeams(true);
+
     const activePlayers = players.filter(p => ROLES.some(role => p[role]));
-    if (activePlayers.length < 10) {
-      alert("参加可能なプレイヤーを10人選択してください。");
+    
+    if (activePlayers.length < 2 || activePlayers.length % 2 !== 0) {
+      const errorMsg = "プレイヤー人数は2人以上の偶数にしてください。";
+      setGenerateTeamsError(errorMsg);
+      setIsGeneratingTeams(false);
+      alert(errorMsg);
       return;
     }
 
-    const getCombinations = (array, size) => {
-      const res = [];
-      const f = (prefix, array) => {
-        for (let i = 0; i < array.length; i++) {
-          const next = prefix.concat([array[i]]);
-          if (size === next.length) res.push(next);
-          else f(next, array.slice(i + 1));
-        }
-      };
-      f([], array);
-      return res;
-    };
-
-    const playerPool = activePlayers.slice(0, 10);
-    const combs = getCombinations(playerPool, 5);
-    let bestMatch = null;
-    let minDiff = Infinity;
-
-    combs.sort(() => Math.random() - 0.5);
-
-    for (let team1 of combs) {
-      const team2 = playerPool.filter(p => !team1.includes(p));
-      const assignRoles = (team) => {
-        const assigned = [];
-        const backtrack = (roleIdx) => {
-          if (roleIdx === ROLES.length) return true;
-          const role = ROLES[roleIdx];
-          for (const p of team) {
-            if (p[role] && !assigned.includes(p)) {
-              assigned.push(p);
-              if (backtrack(roleIdx + 1)) return true;
-              assigned.pop();
-            }
-          }
-          return false;
-        };
-        return backtrack(0) ? assigned : null;
-      };
-
-      const assigned1 = assignRoles(team1);
-      const assigned2 = assignRoles(team2);
-
-      if (assigned1 && assigned2) {
-        const score1 = assigned1.reduce((sum, p, i) => sum + RANK_MAP[p[`${ROLES[i]}_rank`]], 0);
-        const score2 = assigned2.reduce((sum, p, i) => sum + RANK_MAP[p[`${ROLES[i]}_rank`]], 0);
-        const diff = Math.abs(score1 - score2);
-
-        if (diff <= tolerance) {
-          bestMatch = { team1: assigned1.map((p, i) => ({ ...p, role: ROLES[i] })), team2: assigned2.map((p, i) => ({ ...p, role: ROLES[i] })), score1, score2, diff };
-          break;
-        }
-        if (diff < minDiff) {
-          minDiff = diff;
-          bestMatch = { team1: assigned1.map((p, i) => ({ ...p, role: ROLES[i] })), team2: assigned2.map((p, i) => ({ ...p, role: ROLES[i] })), score1, score2, diff };
-        }
-      }
+    const puuids = activePlayers.map(p => p.puuid).filter(Boolean);
+    if (puuids.length !== activePlayers.length) {
+      const errorMsg = "Puuidが設定されていないプレイヤーがいます。ロビーから読み込み直してください。";
+      setGenerateTeamsError(errorMsg);
+      setIsGeneratingTeams(false);
+      alert(errorMsg);
+      return;
     }
-    if (bestMatch) setResult(bestMatch);
-    else alert("条件に合うチーム分けが見つかりませんでした。");
+
+    addLog('SEND', 'レートベースのチーム分けのため、プレイヤーレートを取得します', { puuids });
+
+    try {
+      // 1. バックエンドからレート情報を取得
+      const response = await fetch('/api/get_ratings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ puuids }),
+      });
+
+      const playerRatings = await response.json();
+
+      if (!response.ok) {
+        throw new Error(playerRatings.error || 'プレイヤーレートの取得に失敗しました。');
+      }
+      
+      addLog('SUCCESS', 'プレイヤーレート取得成功', playerRatings);
+
+      // 2. フロントエンドでチーム分けを実行
+      // レート（mu）で降順にソート
+      const sortedPlayers = [...playerRatings].sort((a, b) => b.mu - a.mu);
+
+      const teamA = [];
+      const teamB = [];
+      let scoreA = 0;
+      let scoreB = 0;
+
+      // 3. グリーディ法でチーム分け
+      sortedPlayers.forEach(player => {
+        const playerWithDisplayName = {
+          ...player,
+          displayName: `${player.gameName}#${player.tagLine}`
+        };
+
+        if (scoreA <= scoreB) {
+          teamA.push(playerWithDisplayName);
+          scoreA += player.mu;
+        } else {
+          teamB.push(playerWithDisplayName);
+          scoreB += player.mu;
+        }
+      });
+      
+      const teamsData = { teamA, teamB, scoreA: scoreA.toFixed(2), scoreB: scoreB.toFixed(2) };
+      setTeams(teamsData);
+      addLog('SUCCESS', 'フロントエンドでのチーム分け成功', teamsData);
+
+    } catch (error) {
+      console.error('Team generation failed:', error);
+      const errorMsg = error.message || '不明なエラーが発生しました。';
+      setGenerateTeamsError(errorMsg);
+      addLog('ERROR', `チーム分け失敗: ${errorMsg}`);
+      alert(`チーム分けに失敗しました: ${errorMsg}`);
+    } finally {
+      setIsGeneratingTeams(false);
+    }
   };
 
   const copyResults = (type = 'standard') => {
-    if (!result) return;
-    let text = "チーム1----\n" + result.team1.map(p => `${p.role.toUpperCase()}: ${p.name}`).join('\n') + "\n\nチーム2----\n" + result.team2.map(p => `${p.role.toUpperCase()}: ${p.name}`).join('\n');
+    if (!teams) return;
+
+    let text;
+    const team1 = teams.teamA;
+    const team2 = teams.teamB;
+    
+    text = `チーム1 (合計レート: ${teams.scoreA})----
+` +
+            team1.map(p => `${p.displayName} (レート: ${p.mu.toFixed(2)})`).join('\n') +
+            `\n\nチーム2 (合計レート: ${teams.scoreB})----
+` +
+            team2.map(p => `${p.displayName} (レート: ${p.mu.toFixed(2)})`).join('\n');
+
     if (type === 'opgg') {
-      const getOpgg = (team) => `https://www.op.gg/multisearch/jp?summoners=${team.map(p => encodeURIComponent(p.name + '#' + p.tag)).join('%2C')}`;
-      text += `\n\nTeam1 OPGG: ${getOpgg(result.team1)}\nTeam2 OPGG: ${getOpgg(result.team2)}`;
+      const getOpgg = (team) => {
+        const summoners = team.map(p => {
+          const namePart = p.displayName.split('#')[0];
+          const tagPart = p.displayName.split('#')[1];
+          return encodeURIComponent(`${namePart}#${tagPart}`);
+        }).join('%2C');
+        return `https://www.op.gg/multisearch/jp?summoners=${summoners}`;
+      };
+      text += `\n\nTeam1 OPGG: ${getOpgg(team1)}\nTeam2 OPGG: ${getOpgg(team2)}`;
     }
+
     navigator.clipboard.writeText(text).then(() => {
       setStatusMsg('コピーしました！');
       setTimeout(() => setStatusMsg(''), 3000);
@@ -377,7 +442,11 @@ export default function App() {
 
   const exportJSON = async () => {
     const data = players.reduce((acc, p) => {
-      acc[p.name] = { tag: p.tag, rank: ROLES.reduce((rAcc, r) => ({ ...rAcc, [`${r}_rank`]: p[`${r}_rank`] }), {}), role: ROLES.reduce((rAcc, r) => ({ ...rAcc, [r]: p[r] }), {}) };
+      acc[p.name] = { 
+        tag: p.tag, 
+        rate: ROLES.reduce((rAcc, r) => ({ ...rAcc, [r]: p[`${r}_rate`] }), {}), 
+        role: ROLES.reduce((rAcc, r) => ({ ...rAcc, [r]: p[r] }), {}) 
+      };
       return acc;
     }, {});
     
@@ -407,31 +476,7 @@ export default function App() {
     }
   };
 
-  const handleFileUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      try {
-        const data = JSON.parse(evt.target.result);
-        setPlayers(prev => prev.map(p => {
-          const info = data[p.name];
-          if (info) {
-            return {
-              ...p,
-              ...ROLES.reduce((acc, r) => ({ ...acc, [r]: info.role?.[r] ?? p[r], [`${r}_rank`]: info.rank?.[`${r}_rank`] || p[`${r}_rank`] }), {})
-            };
-          }
-          return p;
-        }));
-        setStatusMsg('設定を読み込みました。');
-        setTimeout(() => setStatusMsg(''), 3000);
-      } catch (err) { alert("形式エラー"); }
-    };
-    reader.readAsText(file);
-  };
 
-  
 
   const handleFetchMatches = () => {
     if (!lcuInfo) return;
@@ -469,11 +514,36 @@ export default function App() {
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.message || 'サーバーでエラーが発生しました。');
+        throw new Error(result.error || 'サーバーでエラーが発生しました。');
       }
 
-      setStatusMsg('アップロードに成功しました！');
-      addLog('SUCCESS', 'アップロード成功', result);
+      setStatusMsg('アップロード成功！プレイヤーレートを更新しました。');
+      addLog('SUCCESS', 'アップロード成功、レート更新', result);
+      
+      if (result.updated_ratings && result.updated_ratings.length > 0) {
+        const ratingsMap = new Map();
+        // puuidごとに最高のmuを持つレートを選ぶ
+        result.updated_ratings.forEach(rating => {
+          if (!ratingsMap.has(rating.puuid) || ratingsMap.get(rating.puuid) < rating.mu) {
+            ratingsMap.set(rating.puuid, rating.mu);
+          }
+        });
+
+        setPlayers(prevPlayers => {
+          return prevPlayers.map(player => {
+            const newRate = ratingsMap.get(player.puuid);
+            if (newRate !== undefined) {
+              const updatedPlayer = { ...player };
+              ROLES.forEach(role => {
+                updatedPlayer[`${role}_rate`] = newRate;
+              });
+              return updatedPlayer;
+            }
+            return player;
+          });
+        });
+      }
+
     } catch (error) {
       console.error('Upload failed:', error);
       setStatusMsg(`アップロード失敗: ${error.message}`);
@@ -481,7 +551,7 @@ export default function App() {
       alert(`アップロードに失敗しました: ${error.message}`);
     } finally {
       setIsUploading(false);
-      setTimeout(() => setStatusMsg(''), 5000); // 5秒後にメッセージを消す
+      setTimeout(() => setStatusMsg(''), 5000);
     }
   };
 
@@ -500,7 +570,6 @@ export default function App() {
           lcuInfo={lcuInfo}
           isLoadingLobby={isLoadingLobby}
           onExport={exportJSON}
-          onFileUpload={handleFileUpload}
           showDebug={showDebug}
           onToggleDebug={() => setShowDebug(!showDebug)}
           debugLogs={logs}
@@ -513,23 +582,23 @@ export default function App() {
             <PlayerInput
               inputName={inputName}
               onInputNameChange={(e) => setInputName(e.target.value)}
-              inputRank={inputRank}
-              onInputRankChange={(e) => setInputRank(e.target.value)}
+              inputRate={inputRate}
+              onInputRateChange={(e) => setInputRate(parseFloat(e.target.value) || 0)}
               onAddPlayer={() => addPlayer()}
             />
 
             
             <TeamResults
-              result={result}
+              teams={teams}
+              isGeneratingTeams={isGeneratingTeams}
+              generateTeamsError={generateTeamsError}
               onCopy={copyResults}
               statusMsg={statusMsg}
             />
 
             <PlayerList
               players={players}
-              tolerance={tolerance}
-              onToleranceChange={(e) => setTolerance(parseInt(e.target.value) || 0)}
-              onDivide={handleDivide}
+              onGenerateTeams={handleGenerateTeams}
               onClear={() => setPlayers([])}
               onUpdatePlayer={updatePlayer}
               onCheckAllRoles={checkAllRoles}
@@ -565,3 +634,5 @@ export default function App() {
     </div>
   );
 }
+
+export default App;

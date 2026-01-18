@@ -75,7 +75,6 @@ const Header = ({
   lcuInfo,
   isLoadingLobby,
   onExport,
-  onFileUpload,
   showDebug,
   onToggleDebug,
   debugLogs,
@@ -132,10 +131,6 @@ const Header = ({
            <button onClick={onExport} className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded transition shadow-sm border border-slate-700">
              <Save size={16} /> SAVE
            </button>
-           <label className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded transition cursor-pointer shadow-sm border border-slate-700">
-             <Upload size={16} /> LOAD
-             <input type="file" className="hidden" onChange={onFileUpload} accept=".json" />
-           </label>
            <button
              onClick={onToggleDebug}
              className={`flex items-center gap-2 px-3 py-2 rounded transition shadow-sm border ${showDebug ? 'bg-red-900/50 border-red-500 text-red-200' : 'bg-slate-800 border-slate-700 text-slate-400'}`}
