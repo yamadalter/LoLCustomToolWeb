@@ -60,35 +60,35 @@ CREATE TABLE IF NOT EXISTS bans (
 
 create_player_table = """
 CREATE TABLE IF NOT EXISTS player (
-    puuid VARCHAR(255),
+    puuid VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
     accountId BIGINT,
     currentAccountId BIGINT,
     currentPlatformId VARCHAR(255),
-    gameName VARCHAR(255),
+    gameName VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
     matchHistoryUri VARCHAR(255),
     platformId VARCHAR(255),
     profileIcon INT,
     summonerId BIGINT,
-    summonerName VARCHAR(255),
+    summonerName VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
     tagLine VARCHAR(255),
     PRIMARY KEY (puuid)
-)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 """
 
 create_player_ratings_table = """
 CREATE TABLE IF NOT EXISTS player_ratings (
-    puuid VARCHAR(255),
+    puuid VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
     lane VARCHAR(255),
     mu FLOAT DEFAULT 25.0,
     sigma FLOAT DEFAULT 8.333,
     PRIMARY KEY (puuid, lane),
     FOREIGN KEY (puuid) REFERENCES player(puuid)
-)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 """
 
 create_rating_history_table = """
 CREATE TABLE IF NOT EXISTS rating_history (
-    puuid VARCHAR(255),
+    puuid VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
     lane VARCHAR(255),
     gameId INT,
     mu_before FLOAT,
@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS rating_history (
     PRIMARY KEY (puuid, lane, gameId),
     FOREIGN KEY (puuid) REFERENCES player(puuid),
     FOREIGN KEY (gameId) REFERENCES game(id)
-)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 """
 
 create_participants_table = """
@@ -107,10 +107,10 @@ CREATE TABLE IF NOT EXISTS participants (
     participantId INT,
     gameId INT,
     teamId INT,
-    puuid VARCHAR(255),
+    puuid VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
     championId INT,
-    position VARCHAR(255),
-    championName VARCHAR(255),
+    position VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+    championName VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
     platformId VARCHAR(255),
     spell1Id INT,
     spell2Id INT,
@@ -119,14 +119,14 @@ CREATE TABLE IF NOT EXISTS participants (
     PRIMARY KEY (participantId, gameId),
     FOREIGN KEY (gameId, teamId) REFERENCES team(gameId, teamId),
     FOREIGN KEY (puuid) REFERENCES player(puuid)
-)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 """
 
 create_stats_table = """
 CREATE TABLE IF NOT EXISTS stats (
     participantId INT,
     gameId INT,
-    puuid VARCHAR(255),
+    puuid VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
     assists INT,
     causedEarlySurrender BOOLEAN,
     champLevel INT,
@@ -243,4 +243,5 @@ CREATE TABLE IF NOT EXISTS stats (
     PRIMARY KEY (participantId, gameId),
     FOREIGN KEY (gameId) REFERENCES game(id),
     FOREIGN KEY (puuid) REFERENCES player(puuid)
-)"""
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+"""
