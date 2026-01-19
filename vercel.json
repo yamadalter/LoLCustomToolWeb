@@ -17,6 +17,10 @@
       "dest": "api/update_ratings.py"
     },
     {
+      "src": "/api/get_all_ratings",
+      "dest": "api/get_all_ratings.py"
+    },
+    {
       "src": "/api/get_ratings",
       "dest": "api/generate_teams.py"
     },
