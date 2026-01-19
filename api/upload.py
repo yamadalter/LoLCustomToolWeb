@@ -44,7 +44,7 @@ class handler(BaseHTTPRequestHandler):
             # DB接続と初期化
             engine = get_engine()
             # 本番環境では毎回呼び出すべきではありませんが、ここでは利便性のために含めます
-            initialize_database(engine) 
+            # initialize_database(engine) 
             
             # データアップロード
             updated_ratings = upload_match_data(match_data, engine)
