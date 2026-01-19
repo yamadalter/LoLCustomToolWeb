@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Twitter, Github } from 'lucide-react';
-import { ROLES, RANK_MAP, DDRAGON_VERSION } from './constants';
-import './App.css';
 import Header from './components/Header';
 import PlayerInput from './components/PlayerInput';
 import PlayerList from './components/PlayerList';
 import TeamResults from './components/TeamResults';
 import MatchHistory from './components/MatchHistory';
+import './App.css';
+import { ROLES, RANK_MAP, DDRAGON_VERSION } from './constants';
 
 
 const VERSION = "v2.0.0-β.1";
@@ -38,6 +38,11 @@ function App() {
   const [logs, setLogs] = useState([]);
   const logsEndRef = useRef(null);
 
+  const addLog = useCallback((type, message, data = null) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setLogs(prev => [...prev, { timestamp, type, message, data: data ? JSON.stringify(data) : null }]);
+  }, []);
+
   useEffect(() => {
     const fetchChampionData = async () => {
       try {
@@ -56,11 +61,6 @@ function App() {
     };
     fetchChampionData();
   }, [addLog]);
-
-  const addLog = useCallback((type, message, data = null) => {
-    const timestamp = new Date().toLocaleTimeString();
-    setLogs(prev => [...prev, { timestamp, type, message, data: data ? JSON.stringify(data) : null }]);
-  }, []);
 
   useEffect(() => {
     if (showDebug && logsEndRef.current) {
@@ -202,7 +202,7 @@ function App() {
       const errorMsg = event.data.error || 'エラーが発生しました。';
       setIsLoadingLobby(false);   
     }
-  }, [addLog, setIsLoadingLobby, setStatusMsg, setMatches, setCurrentUserPuuid]);
+  }, [addLog, setIsLoadingLobby, setStatusMsg, setMatches, setCurrentUserPuuid, championMap]);
 
   // 拡張機能からのメッセージを待受
   useEffect(() => {
