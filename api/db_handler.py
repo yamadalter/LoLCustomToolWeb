@@ -267,6 +267,10 @@ def upload_match_data(d, engine):
                 raise
         
         return df_player_ratings.reset_index().to_dict(orient='records')
+    except Exception as e:
+        print(f"An error occurred in upload_match_data: {e}")
+        # 必要に応じて、ここでNoneや空の辞書を返すなどのエラーハンドリングを追加できます
+        raise
 
 def update_player_ratings(engine, ratings_data):
     """
