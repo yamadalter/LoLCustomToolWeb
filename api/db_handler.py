@@ -202,10 +202,10 @@ def upload_match_data(d, engine):
             }
 
             # 勝敗ランクを設定
-            winner_team_id_series = df_teams.loc[df_teams['isWinner'] == 'Win', 'teamId']
-            if winner_team_id_series.empty:
+            winning_team_row = df_teams[df_teams['isWinner'] == 'Win']
+            if winning_team_row.empty:
                 raise ValueError("Winner team not found in match data. Remake game?")
-            winner_team_id = winner_team_id_series.iloc[0]
+            winner_team_id = winning_team_row.index.get_level_values('teamId')[0]
             ranks = [0, 1] if winner_team_id == 0 else [1, 0]
 
             # レート計算
