@@ -110,7 +110,7 @@ def upload_match_data(d, engine):
             normalized_team_id = 0 if is_blue_team else 1
 
             team['side'] = 'blue' if is_blue_team else 'red'
-            team['teamId'] = normalized_team_idX
+            team['teamId'] = normalized_team_id
 
             bans = team.pop('bans', None)
             team.pop('participants', None)
