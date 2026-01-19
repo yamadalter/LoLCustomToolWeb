@@ -25,6 +25,8 @@ ROLE_MAP = {
     'BOTTOM': 'bot',
     'UTILITY': 'sup'
 }
+trueskill.setup(mu=1500., sigma=125., beta=250., tau=10.)
+trueskill.global_env()
 
 def get_engine():
     """環境変数から接続情報を読み込み、DBエンジンを作成して返す"""
