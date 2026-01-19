@@ -551,7 +551,7 @@ function App() {
 
       const handleLoadFromDB = async () => {
         setIsLoadingFromDB(true);
-        setStatusMsg('DBから全プレイヤーのレートを読み込み中...');
+        setStatusMsg('DBから既存プレイヤーのレートを読み込み中...');
         addLog('SEND', 'DBから全プレイヤーのレートを読み込みます');
     
         try {
@@ -565,39 +565,29 @@ function App() {
           addLog('SUCCESS', 'DBからのレート読み込み成功', dbPlayers);
     
           setPlayers(prevPlayers => {
-            const playerMap = new Map(prevPlayers.map(p => [p.puuid, p]));
-    
-            dbPlayers.forEach(dbPlayer => {
-              const existingPlayer = playerMap.get(dbPlayer.puuid);
-              const newRates = {
-                TOP_rate: dbPlayer.top,
-                JUNGLE_rate: dbPlayer.jg,
-                MIDDLE_rate: dbPlayer.mid,
-                BOTTOM_rate: dbPlayer.bot,
-                UTILITY_rate: dbPlayer.sup,
-              };
-    
-              if (existingPlayer) {
-                // 既存プレイヤーのレートを更新
-                playerMap.set(dbPlayer.puuid, { ...existingPlayer, ...newRates });
-              } else {
-                // 新規プレイヤーを追加
-                const newPlayer = {
-                  id: dbPlayer.puuid,
-                  puuid: dbPlayer.puuid,
+            const dbRatingsMap = new Map();
+            dbPlayers.forEach(p => dbRatingsMap.set(p.puuid, p));
+
+            const updatedPlayers = prevPlayers.map(player => {
+              if (player.puuid && dbRatingsMap.has(player.puuid)) {
+                const dbPlayer = dbRatingsMap.get(player.puuid);
+                return {
+                  ...player,
                   name: dbPlayer.gameName,
                   tag: dbPlayer.tagLine,
-                  ...newRates,
-                  ...ROLES.reduce((acc, role) => ({ ...acc, [role]: true }), {})
+                  TOP_rate: dbPlayer.top,
+                  JUNGLE_rate: dbPlayer.jg,
+                  MIDDLE_rate: dbPlayer.mid,
+                  BOTTOM_rate: dbPlayer.bot,
+                  UTILITY_rate: dbPlayer.sup,
                 };
-                playerMap.set(dbPlayer.puuid, newPlayer);
               }
+              return player;
             });
-    
-            return Array.from(playerMap.values());
+            return updatedPlayers;
           });
     
-          setStatusMsg(`${dbPlayers.length}人のプレイヤー情報をDBから読み込み/更新しました。`);
+          setStatusMsg(`既存プレイヤーの情報をDBから更新しました。`);
           setTimeout(() => setStatusMsg(''), 3000);
     
         } catch (error) {
