@@ -130,7 +130,7 @@ def upload_match_data(d, engine):
             p['puuid'] = p.get('player', {}).get('puuid')
             p['gameId'] = gameId
 
-            is_blue_team = 'blue' in str(team['side'])
+            is_blue_team = 'blue' in str(p['side'])
             p['side'] = 'blue' if is_blue_team else 'red'
             p['teamId'] = 0 if is_blue_team else 1
             
@@ -168,76 +168,76 @@ def upload_match_data(d, engine):
             df_participants = df_participants.set_index(['participantId', 'gameId'])
 
             
-            # all_puuids = df_participants['puuid'].unique().tolist()
+            all_puuids = df_participants['puuid'].unique().tolist()
             
-            # # 既存プレイヤーの全レーンレートを取得
-            # query = text("SELECT puuid, lane, mu, sigma FROM player_ratings WHERE puuid IN :puuids")
-            # with engine.connect() as conn:
-            #     # all_puuidsが空でないことを確認
-            #     if all_puuids:
-            #         existing_ratings_df = pd.read_sql(query, conn, params={'puuids': tuple(all_puuids)})
-            #     else:
-            #         existing_ratings_df = pd.DataFrame(columns=['puuid', 'lane', 'mu', 'sigma'])
+            # 既存プレイヤーの全レーンレートを取得
+            query = text("SELECT puuid, lane, mu, sigma FROM player_ratings WHERE puuid IN :puuids")
+            with engine.connect() as conn:
+                # all_puuidsが空でないことを確認
+                if all_puuids:
+                    existing_ratings_df = pd.read_sql(query, conn, params={'puuids': tuple(all_puuids)})
+                else:
+                    existing_ratings_df = pd.DataFrame(columns=['puuid', 'lane', 'mu', 'sigma'])
 
-            # # (puuid, lane)をキーとするRatingオブジェクトの辞書を作成
-            # existing_ratings = {
-            #     (row['puuid'], row['lane']): trueskill.Rating(mu=row['mu'], sigma=row['sigma'])
-            #     for _, row in existing_ratings_df.iterrows()
-            # }
+            # (puuid, lane)をキーとするRatingオブジェクトの辞書を作成
+            existing_ratings = {
+                (row['puuid'], row['lane']): trueskill.Rating(mu=row['mu'], sigma=row['sigma'])
+                for _, row in existing_ratings_df.iterrows()
+            }
 
-            # # 試合参加者のRatingオブジェクトを準備
-            # player_ratings = {
-            #     (row['puuid'], ROLE_MAP[row['position']]): existing_ratings.get((row['puuid'], ROLE_MAP[row['position']]), trueskill.Rating())
-            #     for _, row in df_participants.iterrows()
-            # }
+            # 試合参加者のRatingオブジェクトを準備
+            player_ratings = {
+                (row['puuid'], ROLE_MAP[row['position']]): existing_ratings.get((row['puuid'], ROLE_MAP[row['position']]), trueskill.Rating())
+                for _, row in df_participants.iterrows()
+            }
 
-            # # チーム分け
-            # team0_ratings_dict = {
-            #     (puuid, lane): rating for (puuid, lane), rating in player_ratings.items()
-            #     if puuid in df_participants[df_participants['teamId'] == 0]['puuid'].values
-            # }
-            # team1_ratings_dict = {
-            #     (puuid, lane): rating for (puuid, lane), rating in player_ratings.items()
-            #     if puuid in df_participants[df_participants['teamId'] == 1]['puuid'].values
-            # }
+            # チーム分け
+            team0_ratings_dict = {
+                (puuid, lane): rating for (puuid, lane), rating in player_ratings.items()
+                if puuid in df_participants[df_participants['teamId'] == 0]['puuid'].values
+            }
+            team1_ratings_dict = {
+                (puuid, lane): rating for (puuid, lane), rating in player_ratings.items()
+                if puuid in df_participants[df_participants['teamId'] == 1]['puuid'].values
+            }
 
-            # # 勝敗ランクを設定
-            # winning_team_row = df_teams[df_teams['isWinner'] == 'Win']
-            # if winning_team_row.empty:
-            #     raise ValueError("Winner team not found in match data. Remake game?")
-            # winner_team_id = winning_team_row.index.get_level_values('teamId')[0]
-            # ranks = [0, 1] if winner_team_id == 0 else [1, 0]
+            # 勝敗ランクを設定
+            winning_team_row = df_teams[df_teams['isWinner'] == 'Win']
+            if winning_team_row.empty:
+                raise ValueError("Winner team not found in match data. Remake game?")
+            winner_team_id = winning_team_row.index.get_level_values('teamId')[0]
+            ranks = [0, 1] if winner_team_id == 0 else [1, 0]
 
-            # # レート計算
-            # new_team0_ratings, new_team1_ratings = trueskill.rate([team0_ratings_dict, team1_ratings_dict], ranks=ranks)
+            # レート計算
+            new_team0_ratings, new_team1_ratings = trueskill.rate([team0_ratings_dict, team1_ratings_dict], ranks=ranks)
 
-            # # 更新用DataFrame作成
-            # updated_ratings = {**new_team0_ratings, **new_team1_ratings}
-            # new_ratings_list = [
-            #     {'puuid': key[0], 'lane': key[1], 'mu': rating.mu, 'sigma': rating.sigma}
-            #     for key, rating in updated_ratings.items()
-            # ]
-            # df_player_ratings = pd.DataFrame(new_ratings_list)
+            # 更新用DataFrame作成
+            updated_ratings = {**new_team0_ratings, **new_team1_ratings}
+            new_ratings_list = [
+                {'puuid': key[0], 'lane': key[1], 'mu': rating.mu, 'sigma': rating.sigma}
+                for key, rating in updated_ratings.items()
+            ]
+            df_player_ratings = pd.DataFrame(new_ratings_list)
             
-            # if not df_player_ratings.empty:
-            #     df_player_ratings.set_index(['puuid', 'lane'], inplace=True)
+            if not df_player_ratings.empty:
+                df_player_ratings.set_index(['puuid', 'lane'], inplace=True)
 
-            #     # レーティング履歴の記録
-            #     history_list = []
-            #     for (puuid, lane), new_rating in updated_ratings.items():
-            #         old_rating = player_ratings.get((puuid, lane), trueskill.Rating())
-            #         history_list.append({
-            #             'puuid': puuid,
-            #             'lane': lane,
-            #             'gameId': gameId,
-            #             'mu_before': old_rating.mu,
-            #             'sigma_before': old_rating.sigma,
-            #             'mu_after': new_rating.mu,
-            #             'sigma_after': new_rating.sigma,
-            #         })
-            #     df_rating_history = pd.DataFrame(history_list)
-            #     if not df_rating_history.empty:
-            #         df_rating_history.set_index(['puuid', 'lane', 'gameId'], inplace=True)
+                # レーティング履歴の記録
+                history_list = []
+                for (puuid, lane), new_rating in updated_ratings.items():
+                    old_rating = player_ratings.get((puuid, lane), trueskill.Rating())
+                    history_list.append({
+                        'puuid': puuid,
+                        'lane': lane,
+                        'gameId': gameId,
+                        'mu_before': old_rating.mu,
+                        'sigma_before': old_rating.sigma,
+                        'mu_after': new_rating.mu,
+                        'sigma_after': new_rating.sigma,
+                    })
+                df_rating_history = pd.DataFrame(history_list)
+                if not df_rating_history.empty:
+                    df_rating_history.set_index(['puuid', 'lane', 'gameId'], inplace=True)
 
         
         # データフレームをデータベースに登録
@@ -255,10 +255,10 @@ def upload_match_data(d, engine):
                     upsert(con=conn, df=df_stats, table_name='stats', if_row_exists='update', add_new_columns=True, create_table=False)
                 if not df_participants.empty:
                     upsert(con=conn, df=df_participants, table_name='participants', if_row_exists='update', add_new_columns=True, create_table=False)
-                # if not df_player_ratings.empty:
-                #     upsert(con=conn, df=df_player_ratings, table_name='player_ratings', if_row_exists='update', add_new_columns=True, create_table=False)
-                # if not df_rating_history.empty:
-                #     upsert(con=conn, df=df_rating_history, table_name='rating_history', if_row_exists='update', add_new_columns=True, create_table=False)
+                if not df_player_ratings.empty:
+                    upsert(con=conn, df=df_player_ratings, table_name='player_ratings', if_row_exists='update', add_new_columns=True, create_table=False)
+                if not df_rating_history.empty:
+                    upsert(con=conn, df=df_rating_history, table_name='rating_history', if_row_exists='update', add_new_columns=True, create_table=False)
                 trans.commit()
             except Exception:
                 trans.rollback()
