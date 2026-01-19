@@ -4,9 +4,7 @@ from sqlalchemy import text
 import sys
 import os
 
-# 親ディレクトリのdb_handlerをインポート
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from api.db_handler import get_engine
+from db_handler import get_engine
 
 app = Flask(__name__)
 
