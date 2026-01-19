@@ -268,7 +268,27 @@ def upload_match_data(d, engine):
         
         return df_player_ratings.reset_index().to_dict(orient='records')
 
-    except Exception as e:
-        print(f"Upload process failed: {e}")
-        # エラーを再発生させて、呼び出し元でトランザクションをロールバックできるようにする
-        raise
+def update_player_ratings(engine, ratings_data):
+    """
+    プレイヤーのレート情報を一括で更新する
+    ratings_data: [{'puuid': str, 'lane': str, 'mu': float}] のリスト
+    """
+    if not ratings_data:
+        return
+
+    df = pd.DataFrame(ratings_data)
+    
+    # sigma はデフォルト値を設定
+    df['sigma'] = trueskill.global_env().sigma
+
+    df.set_index(['puuid', 'lane'], inplace=True)
+
+    with engine.connect() as conn:
+        trans = conn.begin()
+        try:
+            upsert(con=conn, df=df, table_name='player_ratings', if_row_exists='update', create_table=False)
+            trans.commit()
+        except Exception as e:
+            trans.rollback()
+            print(f"Error updating player ratings: {e}")
+            raise

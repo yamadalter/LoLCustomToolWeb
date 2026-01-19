@@ -6,7 +6,7 @@ import PlayerList from './components/PlayerList';
 import TeamResults from './components/TeamResults';
 import MatchHistory from './components/MatchHistory';
 import './App.css';
-import { ROLES, RANK_MAP, DDRAGON_VERSION } from './constants';
+import { ROLES, RANK_MAP, DDRAGON_VERSION, ROLE_MAP } from './constants';
 
 
 const VERSION = "v2.0.0-β.1";
@@ -24,6 +24,9 @@ function App() {
   const [selectedMatchId, setSelectedMatchId] = useState('');
   const [isLoadingMatches, setIsLoadingMatches] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isUpdatingRatings, setIsUpdatingRatings] = useState(false);
+  const [updateRatingsError, setUpdateRatingsError] = useState(null);
+  const [isLoadingFromDB, setIsLoadingFromDB] = useState(false);
   
   // DB-based team generation
   const [teams, setTeams] = useState(null);
@@ -372,34 +375,19 @@ function App() {
       return;
     }
 
-    const puuids = activePlayers.map(p => p.puuid).filter(Boolean);
-    if (puuids.length !== activePlayers.length) {
-      const errorMsg = "Puuidが設定されていないプレイヤーがいます。ロビーから読み込み直してください。";
-      setGenerateTeamsError(errorMsg);
-      setIsGeneratingTeams(false);
-      alert(errorMsg);
-      return;
-    }
-
-    addLog('SEND', 'レートベースのチーム分けのため、プレイヤーレートを取得します', { puuids });
+    addLog('INFO', 'フロントエンドのレートでチーム分けを実行します', activePlayers);
 
     try {
-      // 1. バックエンドからレート情報を取得
-      const response = await fetch('/api/get_ratings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ puuids }),
+      const playerRatings = activePlayers.map(player => {
+        const selectedRoles = ROLES.filter(role => player[role]);
+        const totalRate = selectedRoles.reduce((acc, role) => acc + (player[`${role}_rate`] || 1500), 0);
+        const averageRate = selectedRoles.length > 0 ? totalRate / selectedRoles.length : 1500;
+        return {
+          ...player,
+          mu: averageRate,
+        };
       });
 
-      const playerRatings = await response.json();
-
-      if (!response.ok) {
-        throw new Error(playerRatings.error || 'プレイヤーレートの取得に失敗しました。');
-      }
-      
-      addLog('SUCCESS', 'プレイヤーレート取得成功', playerRatings);
-
-      // 2. フロントエンドでチーム分けを実行
       // レート（mu）で降順にソート
       const sortedPlayers = [...playerRatings].sort((a, b) => b.mu - a.mu);
 
@@ -408,11 +396,11 @@ function App() {
       let scoreA = 0;
       let scoreB = 0;
 
-      // 3. グリーディ法でチーム分け
+      // グリーディ法でチーム分け
       sortedPlayers.forEach(player => {
         const playerWithDisplayName = {
           ...player,
-          displayName: `${player.gameName}#${player.tagLine}`
+          displayName: `${player.name}#${player.tag}`
         };
 
         if (scoreA <= scoreB) {
@@ -502,140 +490,260 @@ function App() {
         a.click();
         URL.revokeObjectURL(url);
       }
-    } catch (err) {
-      if (err.name !== 'AbortError') alert("保存に失敗しました。");
-    }
-  };
-
-
-
-  const handleFetchMatches = () => {
-    if (!lcuInfo) return;
-    setIsLoadingMatches(true);
-    setStatusMsg('拡張機能経由で対戦履歴を取得中...');
-
-    const messageData = {
-      type: 'FETCH_MATCH_HISTORY_REQUEST',
-      port: lcuInfo.port,
-      password: lcuInfo.password,
-      protocol: lcuInfo.protocol || 'https'
-    };
-    addLog('SEND', '拡張機能へ対戦履歴リクエスト送信', messageData);
-    window.postMessage(messageData, "*");
-  };
-
-  const handleUploadMatch = async (matchData) => {
-    if (!matchData) {
-      setStatusMsg('アップロードする試合が選択されていません。');
-      return;
-    }
-    setIsUploading(true);
-    setStatusMsg('試合結果をアップロード中...');
-    addLog('SEND', 'サーバーへ試合結果をアップロードします', matchData);
-
-    try {
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(matchData),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'サーバーでエラーが発生しました。');
-      }
-
-      setStatusMsg('アップロード成功！プレイヤーレートを更新しました。');
-      addLog('SUCCESS', 'アップロード成功、レート更新', result);
-      
-      if (result.updated_ratings && result.updated_ratings.length > 0) {
-        const ratingsMap = new Map();
-        // puuidごとに最高のmuを持つレートを選ぶ
-        result.updated_ratings.forEach(rating => {
-          if (!ratingsMap.has(rating.puuid) || ratingsMap.get(rating.puuid) < rating.mu) {
-            ratingsMap.set(rating.puuid, rating.mu);
-          }
-        });
-
-        setPlayers(prevPlayers => {
-          return prevPlayers.map(player => {
-            const newRate = ratingsMap.get(player.puuid);
-            if (newRate !== undefined) {
-              const updatedPlayer = { ...player };
-              ROLES.forEach(role => {
-                updatedPlayer[`${role}_rate`] = newRate;
-              });
-              return updatedPlayer;
-            }
-            return player;
+        } catch (err) {
+          if (err.name !== 'AbortError') alert("保存に失敗しました。");
+        }
+      };
+    
+      const handleUpdateRatings = async () => {
+        setUpdateRatingsError(null);
+        setIsUpdatingRatings(true);
+        setStatusMsg('DBにレートを保存中...');
+    
+        const playersWithPuuid = players.filter(p => p.puuid);
+        if (playersWithPuuid.length === 0) {
+          const errorMsg = "レートを保存するには、ロビーからプレイヤー情報を読み込み、PUUIDが設定されている必要があります。";
+          setUpdateRatingsError(errorMsg);
+          setIsUpdatingRatings(false);
+          setStatusMsg('');
+          alert(errorMsg);
+          return;
+        }
+    
+        const ratingsData = playersWithPuuid.flatMap(player =>
+          ROLES.map(role => ({
+            puuid: player.puuid,
+            lane: ROLE_MAP[role],
+            mu: player[`${role}_rate`] || 1500,
+          }))
+        );
+    
+        addLog('SEND', 'プレイヤーレートをDBに保存します', ratingsData);
+    
+        try {
+          const response = await fetch('/api/update_ratings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ratings: ratingsData }),
           });
-        });
-      }
+    
+          const result = await response.json();
+    
+          if (!response.ok) {
+            throw new Error(result.error || 'レートの更新に失敗しました。');
+          }
+    
+          setStatusMsg('プレイヤーレートをDBに保存しました！');
+          addLog('SUCCESS', 'プレイヤーレートのDB保存成功', result);
+          setTimeout(() => setStatusMsg(''), 3000);
+        } catch (error) {
+          console.error('Rating update failed:', error);
+          const errorMsg = error.message || '不明なエラーが発生しました。';
+          setUpdateRatingsError(errorMsg);
+          setStatusMsg(`エラー: ${errorMsg}`);
+          addLog('ERROR', `レート保存失敗: ${errorMsg}`);
+          alert(`レートの保存に失敗しました: ${errorMsg}`);
+          setTimeout(() => setStatusMsg(''), 5000);
+        } finally {
+          setIsUpdatingRatings(false);
+        }
+      };
 
-    } catch (error) {
-      console.error('Upload failed:', error);
-      setStatusMsg(`アップロード失敗: ${error.message}`);
-      addLog('ERROR', `アップロード失敗: ${error.message}`);
-      alert(`アップロードに失敗しました: ${error.message}`);
-    } finally {
-      setIsUploading(false);
-      setTimeout(() => setStatusMsg(''), 5000);
-    }
-  };
-
-  const selectedMatch = Array.isArray(matches) ? matches.find(m => (m.gameId || m.gameid).toString() === selectedMatchId) : null;
-
-  return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 p-4 md:p-8 font-sans">
-      <div className="max-w-screen-3xl mx-auto">
-        <Header
-          pathDisplay={pathDisplay}
-          onPathChange={(e) => setPathDisplay(e.target.value)}
-          onPickFolder={handlePickFolder}
-          isFileSystemApiSupported={isFileSystemApiSupported}
-          onReadLockfile={handleReadLockfile}
-          onFetchLobby={fetchLobbyFromExtension}
-          lcuInfo={lcuInfo}
-          isLoadingLobby={isLoadingLobby}
-          onExport={exportJSON}
-          showDebug={showDebug}
-          onToggleDebug={() => setShowDebug(!showDebug)}
-          debugLogs={logs}
-          logsEndRef={logsEndRef}
-          onClearLogs={() => setLogs([])}
-        />
-
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-8">
-          <div className="md:col-span-2 space-y-6">
-            <PlayerInput
-              inputName={inputName}
-              onInputNameChange={(e) => setInputName(e.target.value)}
-              inputRate={inputRate}
-              onInputRateChange={(e) => setInputRate(parseFloat(e.target.value) || 0)}
-              onAddPlayer={() => addPlayer()}
-            />
-
+      const handleLoadFromDB = async () => {
+        setIsLoadingFromDB(true);
+        setStatusMsg('DBから全プレイヤーのレートを読み込み中...');
+        addLog('SEND', 'DBから全プレイヤーのレートを読み込みます');
+    
+        try {
+          const response = await fetch('/api/get_all_ratings');
+          const dbPlayers = await response.json();
+    
+          if (!response.ok) {
+            throw new Error(dbPlayers.error || 'DBからのレート読み込みに失敗しました。');
+          }
+    
+          addLog('SUCCESS', 'DBからのレート読み込み成功', dbPlayers);
+    
+          setPlayers(prevPlayers => {
+            const playerMap = new Map(prevPlayers.map(p => [p.puuid, p]));
+    
+            dbPlayers.forEach(dbPlayer => {
+              const existingPlayer = playerMap.get(dbPlayer.puuid);
+              const newRates = {
+                TOP_rate: dbPlayer.top,
+                JUNGLE_rate: dbPlayer.jg,
+                MIDDLE_rate: dbPlayer.mid,
+                BOTTOM_rate: dbPlayer.bot,
+                UTILITY_rate: dbPlayer.sup,
+              };
+    
+              if (existingPlayer) {
+                // 既存プレイヤーのレートを更新
+                playerMap.set(dbPlayer.puuid, { ...existingPlayer, ...newRates });
+              } else {
+                // 新規プレイヤーを追加
+                const newPlayer = {
+                  id: dbPlayer.puuid,
+                  puuid: dbPlayer.puuid,
+                  name: dbPlayer.gameName,
+                  tag: dbPlayer.tagLine,
+                  ...newRates,
+                  ...ROLES.reduce((acc, role) => ({ ...acc, [role]: true }), {})
+                };
+                playerMap.set(dbPlayer.puuid, newPlayer);
+              }
+            });
+    
+            return Array.from(playerMap.values());
+          });
+    
+          setStatusMsg(`${dbPlayers.length}人のプレイヤー情報をDBから読み込み/更新しました。`);
+          setTimeout(() => setStatusMsg(''), 3000);
+    
+        } catch (error) {
+          console.error('Failed to load ratings from DB:', error);
+          const errorMsg = error.message || '不明なエラーが発生しました。';
+          setStatusMsg(`エラー: ${errorMsg}`);
+          addLog('ERROR', `DBからのレート読み込み失敗: ${errorMsg}`);
+          alert(`DBからのレート読み込みに失敗しました: ${errorMsg}`);
+          setTimeout(() => setStatusMsg(''), 5000);
+        } finally {
+          setIsLoadingFromDB(false);
+        }
+      };
+    
+    
+    
+      const handleFetchMatches = () => {
+        if (!lcuInfo) return;
+        setIsLoadingMatches(true);
+        setStatusMsg('拡張機能経由で対戦履歴を取得中...');
+    
+        const messageData = {
+          type: 'FETCH_MATCH_HISTORY_REQUEST',
+          port: lcuInfo.port,
+          password: lcuInfo.password,
+          protocol: lcuInfo.protocol || 'https'
+        };
+        addLog('SEND', '拡張機能へ対戦履歴リクエスト送信', messageData);
+        window.postMessage(messageData, "*");
+      };
+    
+      const handleUploadMatch = async (matchData) => {
+        if (!matchData) {
+          setStatusMsg('アップロードする試合が選択されていません。');
+          return;
+        }
+        setIsUploading(true);
+        setStatusMsg('試合結果をアップロード中...');
+        addLog('SEND', 'サーバーへ試合結果をアップロードします', matchData);
+    
+        try {
+          const response = await fetch('/api/upload', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(matchData),
+          });
+    
+          const result = await response.json();
+    
+          if (!response.ok) {
+            throw new Error(result.error || 'サーバーでエラーが発生しました。');
+          }
+    
+          setStatusMsg('アップロード成功！プレイヤーレートを更新しました。');
+          addLog('SUCCESS', 'アップロード成功、レート更新', result);
+          
+          if (result.updated_ratings && result.updated_ratings.length > 0) {
+            const ratingsMap = new Map();
+            // puuidごとに最高のmuを持つレートを選ぶ
+            result.updated_ratings.forEach(rating => {
+              if (!ratingsMap.has(rating.puuid) || ratingsMap.get(rating.puuid) < rating.mu) {
+                ratingsMap.set(rating.puuid, rating.mu);
+              }
+            });
+    
+            setPlayers(prevPlayers => {
+              return prevPlayers.map(player => {
+                const newRate = ratingsMap.get(player.puuid);
+                if (newRate !== undefined) {
+                  const updatedPlayer = { ...player };
+                  ROLES.forEach(role => {
+                    updatedPlayer[`${role}_rate`] = newRate;
+                  });
+                  return updatedPlayer;
+                }
+                return player;
+              });
+            });
+          }
+    
+        } catch (error) {
+          console.error('Upload failed:', error);
+          setStatusMsg(`アップロード失敗: ${error.message}`);
+          addLog('ERROR', `アップロード失敗: ${error.message}`);
+          alert(`アップロードに失敗しました: ${error.message}`);
+        } finally {
+          setIsUploading(false);
+          setTimeout(() => setStatusMsg(''), 5000);
+        }
+      };
+    
+      const selectedMatch = Array.isArray(matches) ? matches.find(m => (m.gameId || m.gameid).toString() === selectedMatchId) : null;
+    
+      return (
+        <div className="min-h-screen bg-slate-900 text-slate-100 p-4 md:p-8 font-sans">
+          <div className="max-w-screen-3xl mx-auto">
+                    <Header
+                      pathDisplay={pathDisplay}
+                      onPathChange={(e) => setPathDisplay(e.target.value)}
+                      onPickFolder={handlePickFolder}
+                      isFileSystemApiSupported={isFileSystemApiSupported}
+                      onReadLockfile={handleReadLockfile}
+                      onFetchLobby={fetchLobbyFromExtension}
+                      lcuInfo={lcuInfo}
+                      isLoadingLobby={isLoadingLobby}
+                      onExport={exportJSON}
+                      showDebug={showDebug}
+                      onToggleDebug={() => setShowDebug(!showDebug)}
+                      debugLogs={logs}
+                      logsEndRef={logsEndRef}
+                      onClearLogs={() => setLogs([])}
+                    />
             
-            <TeamResults
-              teams={teams}
-              isGeneratingTeams={isGeneratingTeams}
-              generateTeamsError={generateTeamsError}
-              onCopy={copyResults}
-              statusMsg={statusMsg}
-            />
-
-            <PlayerList
-              players={players}
-              onGenerateTeams={handleGenerateTeams}
-              onClear={() => setPlayers([])}
-              onUpdatePlayer={updatePlayer}
-              onCheckAllRoles={checkAllRoles}
-              onRemovePlayer={removePlayer}
-            />
-          </div>
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-8">
+                      <div className="md:col-span-2 space-y-6">
+                        <PlayerInput
+                          inputName={inputName}
+                          onInputNameChange={(e) => setInputName(e.target.value)}
+                          inputRate={inputRate}
+                          onInputRateChange={(e) => setInputRate(parseFloat(e.target.value) || 0)}
+                          onAddPlayer={() => addPlayer()}
+                        />
+            
+                        
+                        <TeamResults
+                          teams={teams}
+                          isGeneratingTeams={isGeneratingTeams}
+                          generateTeamsError={generateTeamsError}
+                          onCopy={copyResults}
+                          statusMsg={statusMsg}
+                        />
+            
+                        <PlayerList
+                          players={players}
+                          onGenerateTeams={handleGenerateTeams}
+                          onUpdateRatings={handleUpdateRatings}
+                          isUpdatingRatings={isUpdatingRatings}
+                          onLoadFromDB={handleLoadFromDB}
+                          isLoadingFromDB={isLoadingFromDB}
+                          onClear={() => setPlayers([])}
+                          onUpdatePlayer={updatePlayer}
+                          onCheckAllRoles={checkAllRoles}
+                          onRemovePlayer={removePlayer}
+                        />          </div>
           <div className="md:col-span-3 space-y-6">
             <MatchHistory
               lcuInfo={lcuInfo}

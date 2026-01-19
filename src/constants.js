@@ -1,5 +1,16 @@
 export const VERSION = 'v1.4.1-web-debug';
-export const ROLES = ['top', 'jg', 'mid', 'bot', 'sup'];
+export const ROLES = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY'];
+export const ROLE_MAP = {
+  TOP: 'top',
+  JUNGLE: 'jg',
+  MIDDLE: 'mid',
+  BOTTOM: 'bot',
+  UTILITY: 'sup'
+};
+
+export const REVERSE_ROLE_MAP = Object.fromEntries(
+  Object.entries(ROLE_MAP).map(([key, value]) => [value, key])
+);
 
 export const RANK_DATA = [
   { tag: "UN", name: "UNRANKED", val: 400, color: "#FFFFFF" },

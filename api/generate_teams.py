@@ -15,34 +15,53 @@ app = Flask(__name__)
 
 def get_player_ratings(puuids):
     """
-    指定されたpuuidリストのプレイヤーレーティングをDBから取得する
+    指定されたpuuidリストのプレイヤーの全レーンレーティングをDBから取得する
     """
+    if not puuids:
+        return []
+
     engine = get_engine()
     with engine.connect() as conn:
-        # レーンごとに最新のmuを取得するクエリ
-        # player_ratingsにないプレイヤーはデフォルト値(mu=25.0)を使用
-        query = text("""
-            SELECT 
-                p.puuid,
-                p.gameName,
-                p.tagLine,
-                COALESCE(pr.lane, 'DEFAULT') as lane,
-                COALESCE(pr.mu, 25.0) as mu
-            FROM 
-                player p
-            LEFT JOIN 
-                player_ratings pr ON p.puuid = pr.puuid
-            WHERE 
-                p.puuid IN :puuids
+        # playerテーブルからプレイヤー情報を取得
+        player_query = text("""
+            SELECT puuid, gameName, tagLine
+            FROM player
+            WHERE puuid IN :puuids
         """)
+        player_df = pd.read_sql(player_query, conn, params={'puuids': tuple(puuids)})
+
+        # player_ratingsテーブルからレート情報を取得
+        ratings_query = text("""
+            SELECT puuid, lane, mu
+            FROM player_ratings
+            WHERE puuid IN :puuids
+        """)
+        ratings_df = pd.read_sql(ratings_query, conn, params={'puuids': tuple(puuids)})
+
+        # 結果を格納するリスト
+        result_list = []
         
-        df = pd.read_sql(query, conn, params={'puuids': tuple(puuids)})
-        
-        # 各プレイヤーの最高レートを代表値として使用
-        best_ratings = df.loc[df.groupby('puuid')['mu'].idxmax()]
-        
-        # puuidをカラムとして残すためにインデックスをリセット
-        return best_ratings.reset_index(drop=True).to_dict('records')
+        # 全てのレーンを定義
+        lanes = ['top', 'jg', 'mid', 'bot', 'sup']
+
+        for _, player_row in player_df.iterrows():
+            puuid = player_row['puuid']
+            player_data = {
+                'puuid': puuid,
+                'gameName': player_row['gameName'],
+                'tagLine': player_row['tagLine']
+            }
+            
+            player_ratings_df = ratings_df[ratings_df['puuid'] == puuid]
+            
+            for lane in lanes:
+                lane_rating = player_ratings_df[player_ratings_df['lane'] == lane]
+                # レートが存在すればそのmuを、なければ1500をセット
+                player_data[lane] = float(lane_rating['mu'].iloc[0]) if not lane_rating.empty else 1500.0
+            
+            result_list.append(player_data)
+
+        return result_list
 
 @app.route('/api/get_ratings', methods=['POST'])
 def get_ratings_endpoint():
@@ -65,14 +84,16 @@ def get_ratings_endpoint():
         if missing_puuids:
             print(f"Warning: Players not found in DB, using default rating: {missing_puuids}")
             # 不明なプレイヤー情報を追加
+            lanes = ['top', 'jg', 'mid', 'bot', 'sup']
             for puuid in missing_puuids:
-                player_ratings.append({
+                player_data = {
                     'puuid': puuid,
                     'gameName': 'Unknown',
                     'tagLine': 'NA',
-                    'lane': 'DEFAULT',
-                    'mu': 25.0
-                })
+                }
+                for lane in lanes:
+                    player_data[lane] = 1500.0
+                player_ratings.append(player_data)
 
         return jsonify(player_ratings)
 

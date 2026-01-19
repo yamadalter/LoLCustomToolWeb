@@ -13,6 +13,10 @@
   ],
   "routes": [
     {
+      "src": "/api/update_ratings",
+      "dest": "api/update_ratings.py"
+    },
+    {
       "src": "/api/get_ratings",
       "dest": "api/generate_teams.py"
     },

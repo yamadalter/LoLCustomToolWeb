@@ -1,10 +1,14 @@
 import React from 'react';
-import { Trash2, Settings, Swords } from 'lucide-react';
+import { Trash2, Settings, Swords, Save, Database } from 'lucide-react';
 import { ROLES } from '../constants';
 
 const PlayerList = ({
   players,
   onGenerateTeams,
+  onUpdateRatings,
+  isUpdatingRatings,
+  onLoadFromDB,
+  isLoadingFromDB,
   onClear,
   onUpdatePlayer,
   onCheckAllRoles,
@@ -15,6 +19,14 @@ const PlayerList = ({
       <div className="flex justify-between items-center mb-4 flex-wrap gap-4">
         <h2 className="text-lg font-semibold text-blue-400">プレイヤーリスト ({players.length})</h2>
         <div className="flex items-center gap-4">
+          <button onClick={onLoadFromDB} disabled={isLoadingFromDB} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded-lg font-bold transition shadow-md shadow-indigo-900/20 active:scale-[0.98] text-white text-sm whitespace-nowrap disabled:bg-slate-700 disabled:opacity-40">
+            <Database size={16} className={isLoadingFromDB ? 'animate-spin' : ''}/>
+            {isLoadingFromDB ? 'LOADING...' : 'DB LOAD'}
+          </button>
+          <button onClick={onUpdateRatings} disabled={isUpdatingRatings || players.length === 0} className="flex items-center gap-2 bg-sky-600 hover:bg-sky-500 px-4 py-2 rounded-lg font-bold transition shadow-md shadow-sky-900/20 active:scale-[0.98] text-white text-sm whitespace-nowrap disabled:bg-slate-700 disabled:opacity-40">
+            <Save size={16} className={isUpdatingRatings ? 'animate-spin' : ''}/>
+            {isUpdatingRatings ? 'SAVING...' : 'DB SAVE'}
+          </button>
           <button
             onClick={onGenerateTeams}
             disabled={players.length < 2}
@@ -51,7 +63,7 @@ const PlayerList = ({
                     />
                     <input
                       type="number"
-                      step="0.1"
+                      step="100"
                       className="w-16 bg-slate-900/50 border border-slate-700/50 rounded px-2 py-1 text-center font-mono text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all"
                       value={p[`${role}_rate`] || ''}
                       onChange={(e) => onUpdatePlayer(p.id, `${role}_rate`, parseFloat(e.target.value) || 0)}
