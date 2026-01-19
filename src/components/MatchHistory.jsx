@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { DDRAGON_URL, DDRAGON_VERSION } from '../constants';
 
-const MatchDetails = ({ match, championMap }) => {
+const MatchDetails = ({ match }) => {
   if (!match) return null;
 
   const blueTeam = match.participants.filter(p => p.teamId === 100);
@@ -22,7 +22,7 @@ const MatchDetails = ({ match, championMap }) => {
   const blueTeamWon = blueTeam[0]?.stats.win;
 
   const PlayerRow = ({ participant }) => {
-    const champName = championMap[participant.championId] || 'Unknown';
+    const champName = participant.championName || 'Unknown';
     const items = [
       participant.stats.item0,
       participant.stats.item1,
@@ -108,27 +108,8 @@ const MatchHistory = ({
   onSelectMatch,
   currentUserPuuid,
   selectedMatch,
+  championMap,
 }) => {
-  const [championMap, setChampionMap] = useState({});
-
-  useEffect(() => {
-    const fetchChampionData = async () => {
-      try {
-        const response = await fetch(`https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VERSION}/data/en_US/champion.json`);
-        const data = await response.json();
-        const champData = data.data;
-        const champMap = {};
-        for (const champ in champData) {
-          champMap[champData[champ].key] = champData[champ].id;
-        }
-        setChampionMap(champMap);
-      } catch (error) {
-        console.error("Failed to fetch champion data:", error);
-      }
-    };
-    fetchChampionData();
-  }, []);
-
   return (
     <section className="bg-slate-800/50 backdrop-blur-sm p-6 rounded-xl border border-slate-700 shadow-xl">
       <h2 className="text-lg font-semibold mb-4 text-blue-400">対戦履歴</h2>
@@ -167,7 +148,7 @@ const MatchHistory = ({
             const stats = participant.stats;
             const outcome = stats.win ? 'Victory' : 'Defeat';
             const kda = `${stats.kills}/${stats.deaths}/${stats.assists}`;
-            const championName = championMap[participant.championId] || 'Unknown';
+            const championName = participant.championName || 'Unknown';
             return (
               <option key={match.gameId} value={match.gameId}>
                 {new Date(match.gameCreation).toLocaleString()} - {championName} - {outcome} ({kda})
@@ -175,7 +156,7 @@ const MatchHistory = ({
             );
           })}
         </select>
-        {selectedMatch && <MatchDetails match={selectedMatch} championMap={championMap} />}
+        {selectedMatch && <MatchDetails match={selectedMatch} />}
       </div>
     </section>
   );

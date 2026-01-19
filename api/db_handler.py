@@ -17,7 +17,7 @@ from .create_table import (
     create_stats_table,
     create_participants_table,
 )
-
+ROLES = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY']
 
 def get_engine():
     """環境変数から接続情報を読み込み、DBエンジンを作成して返す"""
@@ -99,11 +99,14 @@ def upload_match_data(d, engine):
         for team in teams:
             team['gameId'] = gameId
             
-            is_blue_team = team.get('teamId') == 100
+            is_blue_team = 'blue' in str(team['side'])
             normalized_team_id = 0 if is_blue_team else 1
 
             team['side'] = 'blue' if is_blue_team else 'red'
             team['teamId'] = normalized_team_id
+
+            for i, p in enumerate(team['participants']):
+                p['position'] = ROLES[i]  # positionをROLESに基づいて設定
 
             bans = team.pop('bans', None)
             team.pop('participants', None)
@@ -123,7 +126,7 @@ def upload_match_data(d, engine):
             p['puuid'] = p.get('player', {}).get('puuid')
             p['gameId'] = gameId
 
-            is_blue_team = p.get('teamId') == 100
+            is_blue_team = 'blue' in str(team['side'])
             p['side'] = 'blue' if is_blue_team else 'red'
             p['teamId'] = 0 if is_blue_team else 1
             
@@ -141,7 +144,8 @@ def upload_match_data(d, engine):
             if player:
                 df_player = pd.concat([df_player, pd.json_normalize(player)])
             df_stats = pd.concat([df_stats, pd.json_normalize(stats)])
-
+            print(p)
+        print(participants)
         # インデックスを設定
         df_game = df_game.set_index('id')
         if not df_player.empty:

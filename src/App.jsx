@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Twitter, Github } from 'lucide-react';
-import { ROLES, RANK_MAP } from './constants';
+import { ROLES, RANK_MAP, DDRAGON_VERSION } from './constants';
 import './App.css';
 import Header from './components/Header';
 import PlayerInput from './components/PlayerInput';
@@ -29,6 +29,7 @@ function App() {
   const [teams, setTeams] = useState(null);
   const [isGeneratingTeams, setIsGeneratingTeams] = useState(false);
   const [generateTeamsError, setGenerateTeamsError] = useState(null);
+  const [championMap, setChampionMap] = useState({});
   
   const [currentUserPuuid, setCurrentUserPuuid] = useState(null);
   
@@ -36,6 +37,25 @@ function App() {
   const [showDebug, setShowDebug] = useState(false);
   const [logs, setLogs] = useState([]);
   const logsEndRef = useRef(null);
+
+  useEffect(() => {
+    const fetchChampionData = async () => {
+      try {
+        const response = await fetch(`https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VERSION}/data/en_US/champion.json`);
+        const data = await response.json();
+        const champData = data.data;
+        const champMap = {};
+        for (const champ in champData) {
+          champMap[champData[champ].key] = champData[champ].id;
+        }
+        setChampionMap(champMap);
+        addLog('SUCCESS', 'Champion data loaded successfully');
+      } catch (error) {
+        addLog('ERROR', 'Failed to fetch champion data:', error);
+      }
+    };
+    fetchChampionData();
+  }, [addLog]);
 
   const addLog = useCallback((type, message, data = null) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -156,7 +176,18 @@ function App() {
             extractedGames = games.games;
           }
         }
-
+        
+        // Add championName to participants
+        if (Object.keys(championMap).length > 0) {
+          extractedGames.forEach(match => {
+            if (match.participants && Array.isArray(match.participants)) {
+              match.participants.forEach(participant => {
+                participant.championName = championMap[participant.championId] || 'Unknown';
+              });
+            }
+          });
+        }
+        
         setMatches(extractedGames);
         setCurrentUserPuuid(puuid);
         setStatusMsg('対戦履歴を取得しました。');
@@ -617,6 +648,7 @@ function App() {
               onSelectMatch={setSelectedMatchId}
               currentUserPuuid={currentUserPuuid}
               selectedMatch={selectedMatch}
+              championMap={championMap}
             />
           </div>
         </div>
