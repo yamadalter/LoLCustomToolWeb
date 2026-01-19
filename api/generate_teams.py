@@ -4,7 +4,7 @@ from sqlalchemy import text
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 
-from db_handler import get_engine
+from .db_handler import get_engine
 
 load_dotenv()
 

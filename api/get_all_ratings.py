@@ -4,7 +4,7 @@ from sqlalchemy import text
 import sys
 import os
 
-from db_handler import get_engine
+from .db_handler import get_engine
 
 app = Flask(__name__)
 
