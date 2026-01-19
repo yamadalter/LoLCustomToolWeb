@@ -18,6 +18,13 @@ from .create_table import (
     create_participants_table,
 )
 ROLES = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY']
+ROLE_MAP = {
+    'TOP': 'top',
+    'JUNGLE': 'jg',
+    'MIDDLE': 'mid',
+    'BOTTOM': 'bot',
+    'UTILITY': 'sup'
+}
 
 def get_engine():
     """環境変数から接続情報を読み込み、DBエンジンを作成して返す"""
@@ -103,10 +110,7 @@ def upload_match_data(d, engine):
             normalized_team_id = 0 if is_blue_team else 1
 
             team['side'] = 'blue' if is_blue_team else 'red'
-            team['teamId'] = normalized_team_id
-
-            for i, p in enumerate(team['participants']):
-                p['position'] = ROLES[i]  # positionをROLESに基づいて設定
+            team['teamId'] = normalized_team_idX
 
             bans = team.pop('bans', None)
             team.pop('participants', None)
@@ -118,11 +122,11 @@ def upload_match_data(d, engine):
                     df_bans = pd.concat([df_bans, pd.json_normalize(ban)])
         
         # participantsデータ処理
-        for p in participants:
+        for i, p in enumerate(participants):
             for identity in participantIdentities:
                 if p['participantId'] == identity['participantId']:
                     p['player'] = identity['player']
-            
+            p['position'] = ROLES[i % len(ROLES)]
             p['puuid'] = p.get('player', {}).get('puuid')
             p['gameId'] = gameId
 
@@ -144,8 +148,7 @@ def upload_match_data(d, engine):
             if player:
                 df_player = pd.concat([df_player, pd.json_normalize(player)])
             df_stats = pd.concat([df_stats, pd.json_normalize(stats)])
-            print(p)
-        print(participants)
+
         # インデックスを設定
         df_game = df_game.set_index('id')
         if not df_player.empty:
@@ -163,9 +166,7 @@ def upload_match_data(d, engine):
         if not df_participants.empty:
             df_participants.drop_duplicates(subset=['participantId', 'gameId'], keep='first', inplace=True)
             df_participants = df_participants.set_index(['participantId', 'gameId'])
-            
-            # positionをlaneにリネーム
-            df_participants.rename(columns={'position': 'lane'}, inplace=True)
+
             
             all_puuids = df_participants['puuid'].unique().tolist()
             
@@ -186,7 +187,7 @@ def upload_match_data(d, engine):
 
             # 試合参加者のRatingオブジェクトを準備
             player_ratings = {
-                (row['puuid'], row['lane']): existing_ratings.get((row['puuid'], row['lane']), trueskill.Rating())
+                (row['puuid'], ROLE_MAP[row['position']]): existing_ratings.get((row['puuid'], ROLE_MAP[row['position']]), trueskill.Rating())
                 for _, row in df_participants.iterrows()
             }
 
