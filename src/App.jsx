@@ -95,6 +95,7 @@ function App() {
     if (event.data && event.data.type === 'LCU_LOBBY_DATA_RESPONSE') {
       setIsLoadingLobby(false);
       if (event.data.success && event.data.data) {
+        addLog('INFO', '拡張機能から受信したプレイヤーデータ:', event.data.data);
         const lcuPlayers = event.data.data;
         const puuids = lcuPlayers.map(p => p.puuid).filter(Boolean);
   
@@ -497,6 +498,7 @@ function App() {
     
       const handleUpdateRatings = async () => {
         setUpdateRatingsError(null);
+        addLog('INFO', 'DB保存実行前のプレイヤーリスト:', players);
         setIsUpdatingRatings(true);
         setStatusMsg('DBにレートを保存中...');
     

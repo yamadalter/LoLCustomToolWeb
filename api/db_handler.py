@@ -169,7 +169,6 @@ def upload_match_data(d, engine):
             df_participants.drop_duplicates(subset=['participantId', 'gameId'], keep='first', inplace=True)
             df_participants = df_participants.set_index(['participantId', 'gameId'])
 
-            
             all_puuids = df_participants['puuid'].unique().tolist()
             
             # 既存プレイヤーの全レーンレートを取得
