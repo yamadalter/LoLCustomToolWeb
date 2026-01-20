@@ -111,9 +111,6 @@ function App() {
             const ratingsData = await response.json();
             if (response.ok) {
               addLog('SUCCESS', 'DBレート取得成功', ratingsData);
-              ratingsData.forEach(p => {
-                dbRatings.set(p.puuid, p); // puuidをキーに、プレイヤーオブジェクト全体を保存
-              });
             } else {
               throw new Error(ratingsData.error || 'DBレートの取得に失敗しました。');
             }
@@ -131,10 +128,8 @@ function App() {
             const tier = p.tier.toUpperCase();
             const division = p.division ? p.division.toUpperCase() : '';
             const rankString = ['MASTER', 'GRANDMASTER', 'CHALLENGER'].includes(tier) ? tier : `${tier} ${division}`.trim();
-            print(rankString);
             fallbackRate = RANK_MAP[rankString] !== undefined ? RANK_MAP[rankString] : 1500;
           }
-          print(fallbackRate);
           const roleRates = {};
           if (playerDbRatings) {
             // DBに情報があれば、各レーンのレートを使用
