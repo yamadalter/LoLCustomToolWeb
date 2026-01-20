@@ -75,6 +75,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }
 
         return {
+          puuid: puuid,
           name: gameName,
           tag: tagLine,
           tier: tier,

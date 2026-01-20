@@ -99,7 +99,7 @@ function App() {
         const lcuPlayers = event.data.data;
         const puuids = lcuPlayers.map(p => p.puuid).filter(Boolean);
   
-        let dbRatings = {};
+        let dbRatings = new Map(); // Mapを使用
         if (puuids.length > 0) {
           try {
             addLog('SEND', 'DBからプレイヤーレートを取得します', { puuids });
@@ -112,7 +112,7 @@ function App() {
             if (response.ok) {
               addLog('SUCCESS', 'DBレート取得成功', ratingsData);
               ratingsData.forEach(p => {
-                dbRatings[p.puuid] = p.mu;
+                dbRatings.set(p.puuid, p); // puuidをキーに、プレイヤーオブジェクト全体を保存
               });
             } else {
               throw new Error(ratingsData.error || 'DBレートの取得に失敗しました。');
@@ -124,7 +124,7 @@ function App() {
         }
   
         const newPlayers = lcuPlayers.map(p => {
-          const dbRate = dbRatings[p.puuid];
+          const playerDbRatings = dbRatings.get(p.puuid);
           
           let fallbackRate = 1500;
           if (p.tier && p.tier.toUpperCase() !== 'UNRANKED') {
@@ -134,28 +134,32 @@ function App() {
             fallbackRate = RANK_MAP[rankString] !== undefined ? RANK_MAP[rankString] : 1500;
           }
           
-          const rate = dbRate !== undefined ? dbRate : fallbackRate;
-  
+          const roleRates = {};
+          if (playerDbRatings) {
+            // DBに情報があれば、各レーンのレートを使用
+            ROLES.forEach(role => {
+              const lane = ROLE_MAP[role]; // 'TOP' -> 'top'
+              roleRates[`${role}_rate`] = playerDbRatings[lane] || fallbackRate;
+            });
+          } else {
+            // DBに情報がなければ、全レーンにフォールバックレートを設定
+            ROLES.forEach(role => {
+              roleRates[`${role}_rate`] = fallbackRate;
+            });
+          }
+    
           return {
             id: p.puuid,
             puuid: p.puuid,
             name: p.name,
             tag: p.tag || 'JP1',
-            ...ROLES.reduce((acc, role) => ({
-              ...acc,
-              [`${role}_rate`]: rate,
-              [role]: true
-            }), {})
+            ...roleRates,
+            ...ROLES.reduce((acc, role) => ({ ...acc, [role]: true }), {})
           };
         });
               
-        setPlayers(prevPlayers => {
-          const playerMap = new Map(prevPlayers.map(p => [p.puuid, p]));
-          newPlayers.forEach(p => {
-            playerMap.set(p.puuid, { ...playerMap.get(p.puuid), ...p });
-          });
-          return Array.from(playerMap.values());
-        });
+        // ★★★ ロジック変更: マージするのではなく、完全に置き換える
+        setPlayers(newPlayers);
   
         setStatusMsg(`${newPlayers.length}人のプレイヤーを読み込み/更新しました。`);
         addLog('SUCCESS', `プレイヤー読み込み/更新完了: ${newPlayers.length}人`);
@@ -649,21 +653,26 @@ function App() {
           addLog('SUCCESS', 'アップロード成功、レート更新', result);
           
           if (result.updated_ratings && result.updated_ratings.length > 0) {
-            const ratingsMap = new Map();
-            // puuidごとに最高のmuを持つレートを選ぶ
+            const LANE_TO_ROLE_MAP = Object.fromEntries(Object.entries(ROLE_MAP).map(([role, lane]) => [lane, role]));
+            
+            const ratingsByPuuid = new Map();
             result.updated_ratings.forEach(rating => {
-              if (!ratingsMap.has(rating.puuid) || ratingsMap.get(rating.puuid) < rating.mu) {
-                ratingsMap.set(rating.puuid, rating.mu);
+              if (!ratingsByPuuid.has(rating.puuid)) {
+                ratingsByPuuid.set(rating.puuid, []);
               }
+              ratingsByPuuid.get(rating.puuid).push(rating);
             });
     
             setPlayers(prevPlayers => {
               return prevPlayers.map(player => {
-                const newRate = ratingsMap.get(player.puuid);
-                if (newRate !== undefined) {
+                const playerUpdates = ratingsByPuuid.get(player.puuid);
+                if (playerUpdates) {
                   const updatedPlayer = { ...player };
-                  ROLES.forEach(role => {
-                    updatedPlayer[`${role}_rate`] = newRate;
+                  playerUpdates.forEach(update => {
+                    const role = LANE_TO_ROLE_MAP[update.lane];
+                    if (role) {
+                      updatedPlayer[`${role}_rate`] = update.mu;
+                    }
                   });
                   return updatedPlayer;
                 }
