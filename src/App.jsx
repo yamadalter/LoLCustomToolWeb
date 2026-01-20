@@ -127,13 +127,14 @@ function App() {
           const playerDbRatings = dbRatings.get(p.puuid);
           
           let fallbackRate = 1500;
-          if (p.tier && p.tier.toUpperCase() !== 'UNRANKED') {
+          if (p.tier) {
             const tier = p.tier.toUpperCase();
             const division = p.division ? p.division.toUpperCase() : '';
             const rankString = ['MASTER', 'GRANDMASTER', 'CHALLENGER'].includes(tier) ? tier : `${tier} ${division}`.trim();
+            print(rankString);
             fallbackRate = RANK_MAP[rankString] !== undefined ? RANK_MAP[rankString] : 1500;
           }
-          
+          print(fallbackRate);
           const roleRates = {};
           if (playerDbRatings) {
             // DBに情報があれば、各レーンのレートを使用
