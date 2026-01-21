@@ -33,6 +33,7 @@ function App() {
   const [isGeneratingTeams, setIsGeneratingTeams] = useState(false);
   const [generateTeamsError, setGenerateTeamsError] = useState(null);
   const [championMap, setChampionMap] = useState({});
+  const [rateTolerance, setRateTolerance] = useState(500);
   
   const [currentUserPuuid, setCurrentUserPuuid] = useState(null);
   
@@ -361,11 +362,20 @@ function App() {
     }));
   };
 
+  const shuffleArray = (array) => {
+    const newArray = [...array];
+    for (let i = newArray.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+    }
+    return newArray;
+  };
+
   const handleGenerateTeams = async () => {
     setTeams(null);
     setGenerateTeamsError(null);
     setIsGeneratingTeams(true);
-    addLog('INFO', 'レーンバランスを考慮したチーム分けを開始します', players);
+    addLog('INFO', 'レーンバランスを考慮したチーム分けを開始します', { players, rateTolerance });
 
     const activePlayers = players.filter(p => ROLES.some(role => p[role]));
 
@@ -379,139 +389,115 @@ function App() {
     }
 
     try {
-      // 1. プレイヤーの分類
-      const dedicatedPlayers = activePlayers.filter(p => ROLES.filter(r => p[r]).length === 1);
-      const fillPlayers = activePlayers.filter(p => ROLES.filter(r => p[r]).length !== 1);
-      addLog('INFO', 'プレイヤー分類完了', { dedicated: dedicatedPlayers.length, fill: fillPlayers.length });
+      let bestTeams = null;
+      let minDifference = Infinity;
+      const MAX_TRIES = 100;
 
-      // 2. チーム構造の初期化
-      let teamA = Object.fromEntries(ROLES.map(r => [r, null]));
-      let teamB = Object.fromEntries(ROLES.map(r => [r, null]));
-      let scoreA = 0;
-      let scoreB = 0;
-      let unassignedPlayers = [];
+      for (let i = 0; i < MAX_TRIES; i++) {
+        const shuffledPlayers = shuffleArray(activePlayers);
 
-      // 3. Dedicatedプレイヤーの割り当て
-      ROLES.forEach(role => {
-        const rolePlayers = dedicatedPlayers
-          .filter(p => p[role])
-          .sort((a, b) => (b[`${role}_rate`] || 0) - (a[`${role}_rate`] || 0));
+        const dedicatedPlayers = shuffledPlayers.filter(p => ROLES.filter(r => p[r]).length === 1);
+        const fillPlayers = shuffledPlayers.filter(p => ROLES.filter(r => p[r]).length !== 1);
 
-        rolePlayers.forEach(player => {
-          const rate = player[`${role}_rate`] || 1500;
-          // チームの合計スコアとロールの空き状況で判断
-          if (teamA[role] === null && teamB[role] === null) {
-             if (scoreA <= scoreB) {
-                teamA[role] = player;
-                scoreA += rate;
-             } else {
-                teamB[role] = player;
-                scoreB += rate;
-             }
-          } else if (teamA[role] === null) {
-            teamA[role] = player;
-            scoreA += rate;
-          } else if (teamB[role] === null) {
-            teamB[role] = player;
-            scoreB += rate;
-          } else {
-            unassignedPlayers.push(player); // 3人目以降は後で処理
-          }
-        });
-      });
-      addLog('INFO', 'Dedicatedプレイヤー割り当て完了', { teamA, teamB, unassigned: unassignedPlayers.length });
+        let teamA = Object.fromEntries(ROLES.map(r => [r, null]));
+        let teamB = Object.fromEntries(ROLES.map(r => [r, null]));
+        let scoreA = 0;
+        let scoreB = 0;
+        let unassignedPlayers = [];
 
-
-      // 4. Fillプレイヤーと未割り当てプレイヤーの処理
-      const remainingPlayers = [...fillPlayers, ...unassignedPlayers];
-      // プレイヤーを「最も高い希望レート」でソートする
-      remainingPlayers.sort((a, b) => {
-        const maxRateA = Math.max(...ROLES.filter(r => a[r]).map(r => a[`${r}_rate`] || 1500), 0);
-        const maxRateB = Math.max(...ROLES.filter(r => b[r]).map(r => b[`${r}_rate`] || 1500), 0);
-        return maxRateB - maxRateA;
-      });
-
-      remainingPlayers.forEach(player => {
-        let bestSlot = null;
-        let minDiff = Infinity;
-
-        const availableRoles = ROLES.filter(r => player[r]);
-
-        availableRoles.forEach(role => {
-          const rate = player[`${role}_rate`] || 1500;
-          // チームAの空きスロットを試す
-          if (teamA[role] === null) {
-            const diff = Math.abs((scoreA + rate) - scoreB);
-            if (diff < minDiff) {
-              minDiff = diff;
-              bestSlot = { team: 'A', role: role, rate: rate };
+        ROLES.forEach(role => {
+          const rolePlayers = dedicatedPlayers.filter(p => p[role]);
+          
+          rolePlayers.forEach(player => {
+            const rate = player[`${role}_rate`] || 1500;
+            if (teamA[role] === null && (scoreA <= scoreB || teamB[role] !== null)) {
+              teamA[role] = player;
+              scoreA += rate;
+            } else if (teamB[role] === null) {
+              teamB[role] = player;
+              scoreB += rate;
+            } else {
+              unassignedPlayers.push(player);
             }
-          }
-          // チームBの空きスロットを試す
-          if (teamB[role] === null) {
-            const diff = Math.abs(scoreA - (scoreB + rate));
-            if (diff < minDiff) {
-              minDiff = diff;
-              bestSlot = { team: 'B', role: role, rate: rate };
-            }
-          }
+          });
         });
+        
+        const remainingPlayers = [...fillPlayers, ...unassignedPlayers];
+        
+        remainingPlayers.forEach(player => {
+          let bestSlot = null;
+          let minDiffForPlayer = Infinity;
+          const availableRoles = ROLES.filter(r => player[r] && (teamA[r] === null || teamB[r] === null));
 
-        if (bestSlot) {
-          if (bestSlot.team === 'A') {
-            teamA[bestSlot.role] = player;
-            scoreA += bestSlot.rate;
-          } else {
-            teamB[bestSlot.role] = player;
-            scoreB += bestSlot.rate;
-          }
-        } else {
-           // どこにも割り当てられなかった場合（緊急措置）
-           // これは10人丁度の場合、発生しないはず
-           // もし発生した場合、最初の空きスロットに入れる
-           const firstAvailableSlot = ROLES.find(r => teamA[r] === null || teamB[r] === null);
-           if(firstAvailableSlot){
-              if(teamA[firstAvailableSlot] === null){
-                teamA[firstAvailableSlot] = player;
-                scoreA += player[`${firstAvailableSlot}_rate`] || 1500;
-              } else {
-                teamB[firstAvailableSlot] = player;
-                scoreB += player[`${firstAvailableSlot}_rate`] || 1500;
+          for (const role of availableRoles) {
+            const rate = player[`${role}_rate`] || 1500;
+            if (teamA[role] === null) {
+              const diff = Math.abs((scoreA + rate) - scoreB);
+              if (diff < minDiffForPlayer) {
+                minDiffForPlayer = diff;
+                bestSlot = { team: 'A', role, rate };
               }
-           }
+            }
+            if (teamB[role] === null) {
+              const diff = Math.abs(scoreA - (scoreB + rate));
+              if (diff < minDiffForPlayer) {
+                minDiffForPlayer = diff;
+                bestSlot = { team: 'B', role, rate };
+              }
+            }
+          }
+          
+          if (bestSlot) {
+            if (bestSlot.team === 'A') {
+              teamA[bestSlot.role] = player;
+              scoreA += bestSlot.rate;
+            } else {
+              teamB[bestSlot.role] = player;
+              scoreB += bestSlot.rate;
+            }
+          }
+        });
+
+        const currentDifference = Math.abs(scoreA - scoreB);
+        if (currentDifference < minDifference) {
+          minDifference = currentDifference;
+          
+          const formatTeam = (teamObj) => ROLES.map(role => {
+            const player = teamObj[role];
+            if (!player) return null;
+            return {
+              ...player,
+              displayName: `${player.name}#${player.tag}`,
+              assignedRole: role,
+              mu: player[`${role}_rate`] || 1500,
+            };
+          }).filter(Boolean);
+
+          const finalTeamA = formatTeam(teamA);
+          const finalTeamB = formatTeam(teamB);
+
+          if (finalTeamA.length + finalTeamB.length === 10) {
+            bestTeams = {
+              teamA: finalTeamA,
+              teamB: finalTeamB,
+              scoreA: finalTeamA.reduce((acc, p) => acc + p.mu, 0).toFixed(2),
+              scoreB: finalTeamB.reduce((acc, p) => acc + p.mu, 0).toFixed(2)
+            };
+          }
         }
-      });
-      addLog('INFO', 'Fillプレイヤー割り当て完了', { teamA, teamB });
 
-
-      // 5. 最終的なチームオブジェクトの作成
-      const formatTeam = (teamObj) => {
-        return ROLES.map(role => {
-          const player = teamObj[role];
-          if (!player) return null; // 発生しないはず
-          const rate = player[`${role}_rate`] || 1500;
-          return {
-            ...player,
-            displayName: `${player.name}#${player.tag}`,
-            assignedRole: role,
-            mu: rate,
-          };
-        }).filter(Boolean); // nullを除外
-      };
-
-      const finalTeamA = formatTeam(teamA);
-      const finalTeamB = formatTeam(teamB);
-      
-      const finalScoreA = finalTeamA.reduce((acc, p) => acc + p.mu, 0);
-      const finalScoreB = finalTeamB.reduce((acc, p) => acc + p.mu, 0);
-
-      if (finalTeamA.length + finalTeamB.length !== 10) {
-        throw new Error('チーム分けのロジックに失敗し、全員を割り当てられませんでした。');
+        if (minDifference <= rateTolerance) {
+          addLog('INFO', `許容誤差内の組み合わせを発見しました (試行回数: ${i + 1})`);
+          break;
+        }
       }
 
-      const teamsData = { teamA: finalTeamA, teamB: finalTeamB, scoreA: finalScoreA.toFixed(2), scoreB: finalScoreB.toFixed(2) };
-      setTeams(teamsData);
-      addLog('SUCCESS', 'レーンバランスを考慮したチーム分け成功', teamsData);
+      if (bestTeams) {
+        setTeams(bestTeams);
+        addLog('SUCCESS', 'チーム分け成功', { bestTeams, minDifference });
+      } else {
+        throw new Error('チーム分けに失敗しました。適切な組み合わせが見つかりません。');
+      }
 
     } catch (error) {
       console.error('Team generation failed:', error);
@@ -836,6 +822,8 @@ function App() {
                           onUpdatePlayer={updatePlayer}
                           onCheckAllRoles={checkAllRoles}
                           onRemovePlayer={removePlayer}
+                          rateTolerance={rateTolerance}
+                          onRateToleranceChange={setRateTolerance}
                         />          </div>
           <div className="md:col-span-3 space-y-6">
             <MatchHistory

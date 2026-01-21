@@ -13,6 +13,8 @@ const PlayerList = ({
   onUpdatePlayer,
   onCheckAllRoles,
   onRemovePlayer,
+  rateTolerance,
+  onRateToleranceChange,
 }) => {
   return (
     <section className="bg-slate-800/50 backdrop-blur-sm p-6 rounded-xl border border-slate-700 shadow-xl overflow-x-auto">
@@ -27,13 +29,24 @@ const PlayerList = ({
             <Save size={16} className={isUpdatingRatings ? 'animate-spin' : ''}/>
             {isUpdatingRatings ? 'SAVING...' : 'DB SAVE'}
           </button>
+          <div className="flex items-center gap-2">
+            <label htmlFor="rate-tolerance" className="text-xs text-slate-400 whitespace-nowrap">許容誤差:</label>
+            <input
+              type="number"
+              id="rate-tolerance"
+              step="50"
+              value={rateTolerance}
+              onChange={(e) => onRateToleranceChange(parseFloat(e.target.value) || 0)}
+              className="w-20 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-center font-mono text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            />
+          </div>
           <button
             onClick={onGenerateTeams}
             disabled={players.length < 2}
             className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:opacity-40 px-6 py-2 rounded-lg font-bold transition shadow-md shadow-emerald-900/20 active:scale-[0.98] text-white text-sm whitespace-nowrap flex items-center gap-2"
           >
             <Swords size={16} />
-            レートでチーム分け
+            チーム分け実行
           </button>
           <button onClick={onClear} className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1 transition-colors">
             <Trash2 size={12} /> 全削除
