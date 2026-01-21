@@ -2,7 +2,6 @@
   "manifest_version": 3,
   "name": "LoL Custom Tool Connector",
   "version": "1.0",
-  "permissions": ["scripting"],
   "host_permissions": [
     "https://127.0.0.1/*",
     "http://localhost:3000/*",

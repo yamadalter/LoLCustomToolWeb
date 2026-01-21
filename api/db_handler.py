@@ -284,11 +284,18 @@ def update_player_ratings(engine, ratings_data):
     # sigma はデフォルト値を設定
     df['sigma'] = trueskill.global_env().sigma
 
+    # playerテーブルに存在しないpuuidを追加する
+    all_puuids = df['puuid'].unique()
+    df_players = pd.DataFrame(all_puuids, columns=['puuid']).set_index('puuid')
+
     df.set_index(['puuid', 'lane'], inplace=True)
 
     with engine.connect() as conn:
         trans = conn.begin()
         try:
+            # プレイヤー情報をまずupsert
+            upsert(con=conn, df=df_players, table_name='player', if_row_exists='update', create_table=False)
+            # 次にplayer_ratingsをupsert
             upsert(con=conn, df=df, table_name='player_ratings', if_row_exists='update', create_table=False)
             trans.commit()
         except Exception as e:

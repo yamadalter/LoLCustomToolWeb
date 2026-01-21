@@ -54,9 +54,14 @@ const TeamResults = ({ result, teams, onCopy, statusMsg, isGeneratingTeams, gene
               {teamA.map((p, i) => (
                 <div key={p.puuid || i} className="bg-slate-900/40 p-2.5 rounded-lg border border-slate-700/50 shadow-inner group">
                   <div className="flex justify-between items-center">
-                    <span className="font-medium truncate block text-xs">{p.displayName || p.name}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] font-bold text-slate-400 bg-slate-700/50 px-1.5 py-0.5 rounded w-12 text-center">
+                        {p.assignedRole}
+                      </span>
+                      <span className="font-medium truncate block text-xs">{p.displayName || p.name}</span>
+                    </div>
                     <span className="text-slate-500 font-mono text-[9px] group-hover:text-blue-400 transition-colors">
-                      {p.mu?.toFixed(2) || p.role}
+                      {p.mu?.toFixed(2)}
                     </span>
                   </div>
                 </div>
@@ -71,9 +76,14 @@ const TeamResults = ({ result, teams, onCopy, statusMsg, isGeneratingTeams, gene
               {teamB.map((p, i) => (
                 <div key={p.puuid || i} className="bg-slate-900/40 p-2.5 rounded-lg border border-slate-700/50 shadow-inner group">
                    <div className="flex justify-between items-center">
-                    <span className="font-medium truncate block text-xs">{p.displayName || p.name}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] font-bold text-slate-400 bg-slate-700/50 px-1.5 py-0.5 rounded w-12 text-center">
+                        {p.assignedRole}
+                      </span>
+                      <span className="font-medium truncate block text-xs">{p.displayName || p.name}</span>
+                    </div>
                     <span className="text-slate-500 font-mono text-[9px] group-hover:text-red-400 transition-colors">
-                      {p.mu?.toFixed(2) || p.role}
+                      {p.mu?.toFixed(2)}
                     </span>
                   </div>
                 </div>
