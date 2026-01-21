@@ -391,7 +391,7 @@ function App() {
     try {
       let bestTeams = null;
       let minDifference = Infinity;
-      const MAX_TRIES = 100;
+      const MAX_TRIES = 500;
 
       for (let i = 0; i < MAX_TRIES; i++) {
         const shuffledPlayers = shuffleArray(activePlayers);
