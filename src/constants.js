@@ -1,4 +1,3 @@
-export const VERSION = 'v1.4.1-web-debug';
 export const ROLES = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY'];
 export const ROLE_MAP = {
   TOP: 'top',
@@ -48,6 +47,3 @@ export const RANK_DATA = [
 ];
 
 export const RANK_MAP = RANK_DATA.reduce((acc, r) => ({ ...acc, [r.name]: r.val }), {});
-
-export const DDRAGON_VERSION = '16.1.1'; // 必要に応じて更新
-export const DDRAGON_URL = `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VERSION}`;

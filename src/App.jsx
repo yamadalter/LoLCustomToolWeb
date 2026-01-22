@@ -6,7 +6,7 @@ import PlayerList from './components/PlayerList';
 import TeamResults from './components/TeamResults';
 import MatchHistory from './components/MatchHistory';
 import './App.css';
-import { ROLES, RANK_MAP, DDRAGON_VERSION, ROLE_MAP } from './constants';
+import { ROLES, RANK_MAP, ROLE_MAP } from './constants';
 
 
 const VERSION = "v2.0.0-β.1";
@@ -50,7 +50,12 @@ function App() {
   useEffect(() => {
     const fetchChampionData = async () => {
       try {
-        const response = await fetch(`https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VERSION}/data/en_US/champion.json`);
+        const versionsResponse = await fetch('https://ddragon.leagueoflegends.com/api/versions.json');
+        const versions = await versionsResponse.json();
+        const latestVersion = versions[0];
+        addLog('INFO', `Latest DDragon version: ${latestVersion}`);
+
+        const response = await fetch(`https://ddragon.leagueoflegends.com/cdn/${latestVersion}/data/en_US/champion.json`);
         const data = await response.json();
         const champData = data.data;
         const champMap = {};

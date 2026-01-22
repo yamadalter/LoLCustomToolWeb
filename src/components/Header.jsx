@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import RankTable from './RankTable';
 import {
   Users,
   UserPlus,
@@ -17,7 +18,8 @@ import {
   FileSearch,
   MapPin,
   Gamepad2,
-  Bug
+  Bug,
+  ListOrdered
 } from 'lucide-react';
 import { VERSION } from '../constants';
 
@@ -81,6 +83,8 @@ const Header = ({
   logsEndRef,
   onClearLogs
 }) => {
+  const [showRankTable, setShowRankTable] = useState(false);
+
   return (
     <>
       <header className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
@@ -131,6 +135,9 @@ const Header = ({
            <button onClick={onExport} className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded transition shadow-sm border border-slate-700">
              <Save size={16} /> SAVE
            </button>
+           <button onClick={() => setShowRankTable(true)} className="flex items-center gap-2 bg-sky-800 hover:bg-sky-700 px-3 py-2 rounded transition shadow-sm border border-sky-700 text-sky-200">
+             <ListOrdered size={16} /> レート表
+           </button>
            <button
              onClick={onToggleDebug}
              className={`flex items-center gap-2 px-3 py-2 rounded transition shadow-sm border ${showDebug ? 'bg-red-900/50 border-red-500 text-red-200' : 'bg-slate-800 border-slate-700 text-slate-400'}`}
@@ -146,8 +153,8 @@ const Header = ({
       )}
 
       {lcuInfo && <LcuInfoDisplay lcuInfo={lcuInfo} />}
+
+      {showRankTable && <RankTable onClose={() => setShowRankTable(false)} />}
     </>
   );
 };
-
-export default Header;
