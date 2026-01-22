@@ -5,14 +5,12 @@ window.addEventListener('message', (event) => {
     return;
   }
 
-  const { port, password } = event.data;
-
-  if (event.data.type == 'FETCH_LCU_LOBBY_REQUEST') {
+  if (event.data.type === 'FETCH_LCU_LOBBY_REQUEST') {
     // Background Scriptへ通信を依頼
     chrome.runtime.sendMessage({
       action: 'FETCH_LCU_LOBBY',
-      port,
-      password
+      port: event.data.port,
+      password: event.data.password
     }, (response) => {
       // Backgroundからの結果をWebアプリに返す
       window.postMessage({
@@ -20,7 +18,7 @@ window.addEventListener('message', (event) => {
         ...response
       }, "*");
     });
-  }else if (event.data.type == 'FETCH_MATCH_HISTORY_REQUEST') {
+  } else if (event.data.type === 'FETCH_MATCH_HISTORY_REQUEST') {
     // Background Scriptへ通信を依頼
     chrome.runtime.sendMessage({
       action: 'FETCH_MATCH_HISTORY',
@@ -34,8 +32,18 @@ window.addEventListener('message', (event) => {
         ...response
       }, "*");
     });
-  }else{
-    return;
+  } else if (event.data.type === 'SEARCH_PLAYER_BY_RIOT_ID_REQUEST') {
+    chrome.runtime.sendMessage({
+      action: 'SEARCH_PLAYER_BY_RIOT_ID',
+      port: event.data.port,
+      password: event.data.password,
+      gameName: event.data.gameName,
+      tagLine: event.data.tagLine,
+    }, (response) => {
+      window.postMessage({
+        type: 'LCU_SEARCH_PLAYER_RESPONSE',
+        ...response
+      }, "*");
+    });
   }
-
 });

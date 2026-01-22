@@ -14,7 +14,7 @@ const VERSION = "v2.0.0-β.1";
 function App() {
   const [players, setPlayers] = useState([]);
   const [inputName, setInputName] = useState('');
-  const [inputRate, setInputRate] = useState(1500);
+  const [inputTag, setInputTag] = useState('');
   const [statusMsg, setStatusMsg] = useState('');
   const [lcuInfo, setLcuInfo] = useState(null);
   const [dirHandle, setDirHandle] = useState(null);
@@ -89,7 +89,7 @@ function App() {
   }, [pathDisplay]);
 
   const handleMessage = useCallback(async (event) => {
-    if (event.data && (event.data.type === 'LCU_LOBBY_DATA_RESPONSE' || event.data.type === 'LCU_ERROR')) {
+    if (event.data && (event.data.type === 'LCU_LOBBY_DATA_RESPONSE' || event.data.type === 'LCU_ERROR' || event.data.type === 'LCU_SEARCH_PLAYER_RESPONSE')) {
       addLog('RECEIVE', `メッセージを受信しました: ${event.data.type}`, event.data);
     }
   
@@ -168,6 +168,53 @@ function App() {
         addLog('ERROR', errorMsg);
         alert(errorMsg);
       }
+    } else if (event.data && event.data.type === 'LCU_SEARCH_PLAYER_RESPONSE') {
+      setIsLoadingLobby(false); // スピナーを止めるために流用
+      if (event.data.success && event.data.data) {
+          addLog('INFO', '拡張機能から受信した検索プレイヤーデータ:', event.data.data);
+          const searchedPlayer = event.data.data;
+  
+          // プレイヤーがリストに既にいるか確認
+          if (players.some(p => p.puuid === searchedPlayer.puuid)) {
+              setStatusMsg('このプレイヤーは既に追加されています。');
+              addLog('WARN', 'プレイヤーは既に追加されています', searchedPlayer);
+              setTimeout(() => setStatusMsg(''), 3000);
+              return;
+          }
+  
+          // レート情報を取得
+          let fallbackRate = 1500;
+          if (searchedPlayer.tier) {
+              const tier = searchedPlayer.tier.toUpperCase();
+              const division = searchedPlayer.division ? searchedPlayer.division.toUpperCase() : '';
+              const rankString = ['MASTER', 'GRANDMASTER', 'CHALLENGER'].includes(tier) ? tier : `${tier} ${division}`.trim();
+              fallbackRate = RANK_MAP[rankString] !== undefined ? RANK_MAP[rankString] : 1500;
+          }
+          const roleRates = {};
+          ROLES.forEach(role => {
+              roleRates[`${role}_rate`] = fallbackRate;
+          });
+  
+          const newPlayer = {
+              id: searchedPlayer.puuid,
+              puuid: searchedPlayer.puuid,
+              name: searchedPlayer.name,
+              tag: searchedPlayer.tag,
+              ...roleRates,
+              ...ROLES.reduce((acc, role) => ({ ...acc, [role]: true }), {})
+          };
+  
+          setPlayers(prev => [...prev, newPlayer]);
+          setStatusMsg(`${newPlayer.name}#${newPlayer.tag} を追加しました。`);
+          addLog('SUCCESS', 'プレイヤー追加完了', newPlayer);
+          setTimeout(() => setStatusMsg(''), 3000);
+  
+      } else {
+          const errorMsg = event.data.error || 'プレイヤーの検索に失敗しました。';
+          setStatusMsg(errorMsg);
+          addLog('ERROR', errorMsg);
+          alert(errorMsg);
+      }
     } else if (event.data && event.data.type === 'LCU_MATCH_HISTORY_DATA_RESPONSE') {
       setIsLoadingMatches(false);
       if (event.data.success && event.data.data) {
@@ -207,7 +254,7 @@ function App() {
       const errorMsg = event.data.error || 'エラーが発生しました。';
       setIsLoadingLobby(false);   
     }
-  }, [addLog, setIsLoadingLobby, setStatusMsg, setMatches, setCurrentUserPuuid, championMap]);
+  }, [addLog, setIsLoadingLobby, setStatusMsg, setMatches, setCurrentUserPuuid, championMap, players]);
 
   // 拡張機能からのメッセージを待受
   useEffect(() => {
@@ -327,20 +374,31 @@ function App() {
     }, 5000);
   }, [lcuInfo, addLog]);
 
-  const addPlayer = (name = inputName, rate = inputRate) => {
-    if (!name.trim()) return;
-    const newPlayer = {
-      id: Date.now() + Math.random(),
-      name: name.trim(),
-      tag: 'JP1',
-      ...ROLES.reduce((acc, role) => ({
-        ...acc,
-        [`${role}_rate`]: rate,
-        [role]: true
-      }), {})
+  const handleAddPlayerByRiotId = () => {
+    if (!inputName.trim() || !inputTag.trim()) {
+      alert('サモナー名とゲームタグを入力してください。');
+      return;
+    }
+    
+    if (!lcuInfo) {
+      alert('先にLoLクライアントの情報を読み込んでください。');
+      return;
+    }
+
+    setIsLoadingLobby(true); // スピナー表示
+    const messageData = {
+      type: 'SEARCH_PLAYER_BY_RIOT_ID_REQUEST',
+      port: lcuInfo.port,
+      password: lcuInfo.password,
+      gameName: inputName,
+      tagLine: inputTag,
     };
-    setPlayers(prev => [...prev, newPlayer]);
+    
+    addLog('SEND', '拡張機能へプレイヤー検索リクエストを送信', messageData);
+    window.postMessage(messageData, "*");
+
     setInputName('');
+    setInputTag('');
   };
 
   const removePlayer = (id) => {
@@ -797,9 +855,9 @@ function App() {
                         <PlayerInput
                           inputName={inputName}
                           onInputNameChange={(e) => setInputName(e.target.value)}
-                          inputRate={inputRate}
-                          onInputRateChange={(e) => setInputRate(parseFloat(e.target.value) || 0)}
-                          onAddPlayer={() => addPlayer()}
+                          inputTag={inputTag}
+                          onInputTagChange={(e) => setInputTag(e.target.value)}
+                          onAddPlayer={handleAddPlayerByRiotId}
                         />
             
                         

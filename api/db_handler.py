@@ -25,7 +25,7 @@ ROLE_MAP = {
     'BOTTOM': 'bot',
     'UTILITY': 'sup'
 }
-trueskill.setup(mu=1500., sigma=125., beta=250., tau=10.)
+trueskill.setup(mu=1500., sigma=300., beta=250., tau=10.)
 trueskill.global_env()
 
 def get_engine():
@@ -77,6 +77,22 @@ def upload_match_data(d, engine):
     """
     受け取った辞書データをPandas DataFrameに変換し、DBにupsertする
     """
+    # フロントエンドから渡される 'gameId' または Cassiopeia の 'id' を取得
+    gameId_from_frontend = d.get('gameId')
+    gameId_from_cass = d.get('id')
+    gameId = gameId_from_frontend or gameId_from_cass
+
+    if not gameId:
+        raise ValueError("gameId is missing from match data")
+
+    # DBに試合がすでに存在するかチェック
+    with engine.connect() as conn:
+        query = text("SELECT 1 FROM game WHERE id = :game_id")
+        result = conn.execute(query, {'game_id': gameId}).scalar_one_or_none()
+        if result is not None:
+            print(f"Match {gameId} has already been processed. Skipping.")
+            return []  # 空のリストを返して、更新がなかったことを示す
+
     try:
         # 初期化
         df_player = pd.DataFrame([])
@@ -214,10 +230,17 @@ def upload_match_data(d, engine):
 
             # 更新用DataFrame作成
             updated_ratings = {**new_team0_ratings, **new_team1_ratings}
-            new_ratings_list = [
-                {'puuid': key[0], 'lane': key[1], 'mu': rating.mu, 'sigma': rating.sigma}
-                for key, rating in updated_ratings.items()
-            ]
+            
+            new_ratings_list = []
+            for key, rating in updated_ratings.items():
+                new_sigma = max(rating.sigma, 200.0)  # sigmaが200未満にならないように下限を設定
+                new_ratings_list.append({
+                    'puuid': key[0],
+                    'lane': key[1],
+                    'mu': rating.mu,
+                    'sigma': new_sigma
+                })
+            
             df_player_ratings = pd.DataFrame(new_ratings_list)
             
             if not df_player_ratings.empty:
@@ -227,6 +250,7 @@ def upload_match_data(d, engine):
                 history_list = []
                 for (puuid, lane), new_rating in updated_ratings.items():
                     old_rating = player_ratings.get((puuid, lane), trueskill.Rating())
+                    new_sigma = max(new_rating.sigma, 200.0) # sigmaが200未満にならないように下限を設定
                     history_list.append({
                         'puuid': puuid,
                         'lane': lane,
@@ -234,7 +258,7 @@ def upload_match_data(d, engine):
                         'mu_before': old_rating.mu,
                         'sigma_before': old_rating.sigma,
                         'mu_after': new_rating.mu,
-                        'sigma_after': new_rating.sigma,
+                        'sigma_after': new_sigma,
                     })
                 df_rating_history = pd.DataFrame(history_list)
                 if not df_rating_history.empty:
