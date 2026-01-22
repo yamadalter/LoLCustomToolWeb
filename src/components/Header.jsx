@@ -21,7 +21,6 @@ import {
   Bug,
   ListOrdered
 } from 'lucide-react';
-import { VERSION } from '../constants';
 
 const DebugConsole = ({ logs, logsEndRef, onClear }) => (
   <div className="bg-black/80 font-mono text-xs p-4 rounded-xl border border-red-500/30 mb-6 shadow-xl max-h-60 overflow-y-auto">
@@ -76,12 +75,12 @@ const Header = ({
   onFetchLobby,
   lcuInfo,
   isLoadingLobby,
-  onExport,
   showDebug,
   onToggleDebug,
   debugLogs,
   logsEndRef,
-  onClearLogs
+  onClearLogs,
+  onToggleProfile
 }) => {
   const [showRankTable, setShowRankTable] = useState(false);
 
@@ -132,11 +131,11 @@ const Header = ({
              {isLoadingLobby ? '取得中...' : 'ロビー取得'}
            </button>
 
-           <button onClick={onExport} className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded transition shadow-sm border border-slate-700">
-             <Save size={16} /> SAVE
-           </button>
            <button onClick={() => setShowRankTable(true)} className="flex items-center gap-2 bg-sky-800 hover:bg-sky-700 px-3 py-2 rounded transition shadow-sm border border-sky-700 text-sky-200">
              <ListOrdered size={16} /> レート表
+           </button>
+           <button onClick={onToggleProfile} className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded transition shadow-sm border border-slate-700 text-slate-200">
+            <Settings size={16} /> プロファイル
            </button>
            <button
              onClick={onToggleDebug}

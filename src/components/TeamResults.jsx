@@ -1,7 +1,7 @@
 import React from 'react';
-import { Copy, ExternalLink, Loader2 } from 'lucide-react';
+import { Copy, ExternalLink, Loader2, Send } from 'lucide-react';
 
-const TeamResults = ({ result, teams, onCopy, statusMsg, isGeneratingTeams, generateTeamsError }) => {
+const TeamResults = ({ result, teams, onCopy, statusMsg, isGeneratingTeams, generateTeamsError, onSendToDiscord, teamsWebhookUrl }) => {
   const displayData = teams || result;
   const scoreA = teams?.scoreA || result?.score1;
   const scoreB = teams?.scoreB || result?.score2;
@@ -93,6 +93,15 @@ const TeamResults = ({ result, teams, onCopy, statusMsg, isGeneratingTeams, gene
           <div className="pt-6 space-y-3">
             <button onClick={() => onCopy('standard')} className="w-full flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 py-3 rounded-lg text-xs font-semibold transition-all active:scale-[0.97] text-white border border-slate-600 shadow-sm"><Copy size={14} /> 結果コピー</button>
             <button onClick={() => onCopy('opgg')} className="w-full flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 py-3 rounded-lg text-xs font-semibold transition-all active:scale-[0.97] text-blue-300 border border-slate-600 shadow-sm"><ExternalLink size={14} /> OPGGコピー</button>
+            <button
+              onClick={onSendToDiscord}
+              disabled={!teamsWebhookUrl}
+              className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 py-3 rounded-lg text-xs font-semibold transition-all active:scale-[0.97] text-white border border-indigo-500 shadow-sm disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed"
+              title={!teamsWebhookUrl ? "プロファイル設定でWebhook URLを設定してください" : "Discordに結果を送信"}
+            >
+              <Send size={14} />
+              Discordへ送信
+            </button>
             {statusMsg && <p className="text-center text-[10px] text-emerald-400 font-medium animate-pulse">{statusMsg}</p>}
           </div>
         </div>

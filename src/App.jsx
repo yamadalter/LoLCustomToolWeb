@@ -5,6 +5,7 @@ import PlayerInput from './components/PlayerInput';
 import PlayerList from './components/PlayerList';
 import TeamResults from './components/TeamResults';
 import MatchHistory from './components/MatchHistory';
+import Profile from './components/Profile';
 import './App.css';
 import { ROLES, RANK_MAP, ROLE_MAP } from './constants';
 
@@ -37,6 +38,11 @@ function App() {
   
   const [ddragonUrl, setDdragonUrl] = useState('');
   const [currentUserPuuid, setCurrentUserPuuid] = useState(null);
+
+  // Profile State
+  const [showProfile, setShowProfile] = useState(false);
+  const [teamsWebhookUrl, setTeamsWebhookUrl] = useState('');
+  const [matchesWebhookUrl, setMatchesWebhookUrl] = useState('');
   
   // Debug State
   const [showDebug, setShowDebug] = useState(false);
@@ -85,6 +91,10 @@ function App() {
     if (saved) setPlayers(JSON.parse(saved));
     const savedPath = localStorage.getItem('lol_custom_path');
     if (savedPath) setPathDisplay(savedPath);
+    const savedTeamsUrl = localStorage.getItem('lol_custom_teams_webhook_url');
+    if (savedTeamsUrl) setTeamsWebhookUrl(savedTeamsUrl);
+    const savedMatchesUrl = localStorage.getItem('lol_custom_matches_webhook_url');
+    if (savedMatchesUrl) setMatchesWebhookUrl(savedMatchesUrl);
   }, []);
 
   useEffect(() => {
@@ -94,6 +104,14 @@ function App() {
   useEffect(() => {
     localStorage.setItem('lol_custom_path', pathDisplay);
   }, [pathDisplay]);
+
+  useEffect(() => {
+    localStorage.setItem('lol_custom_teams_webhook_url', teamsWebhookUrl);
+  }, [teamsWebhookUrl]);
+
+  useEffect(() => {
+    localStorage.setItem('lol_custom_matches_webhook_url', matchesWebhookUrl);
+  }, [matchesWebhookUrl]);
 
   const handleMessage = useCallback(async (event) => {
     if (event.data && (event.data.type === 'LCU_LOBBY_DATA_RESPONSE' || event.data.type === 'LCU_ERROR' || event.data.type === 'LCU_SEARCH_PLAYER_RESPONSE')) {
@@ -635,6 +653,89 @@ function App() {
     }
   };
 
+  const handleSendTeamsToDiscord = async () => {
+    if (!teams || !teamsWebhookUrl) {
+      setStatusMsg('チームデータまたはWebhook URLがありません。');
+      setTimeout(() => setStatusMsg(''), 3000);
+      return;
+    }
+
+    setStatusMsg('Discordに送信中...');
+
+    const { teamA, teamB, scoreA, scoreB } = teams;
+    const diff = Math.abs(scoreA - scoreB).toFixed(2);
+    const getOpgg = (team) => {
+      const summoners = team.map(p => {
+        const namePart = p.displayName.split('#')[0];
+        const tagPart = p.displayName.split('#')[1];
+        return encodeURIComponent(`${namePart}#${tagPart}`);
+      }).join('%2C');
+      return `https://www.op.gg/multisearch/jp?summoners=${summoners}`;
+    };
+    const embed = {
+      title: 'カスタムゲーム チーム分け結果',
+      color: 3447003, // Blue
+      fields: [
+        {
+          name: `🔵 チーム1 (合計レート: ${Math.trunc(scoreA)})`,
+          value: teamA.map(p => `> **${ROLE_MAP[p.assignedRole]}**: ${p.displayName.split('#')[0]} (${p.mu.toFixed(0)})`).join('\n') + `\n\n**[OPGG](${getOpgg(teamA)})**\n`,
+          inline: true,
+        },
+        {
+          name: `🔴 チーム2 (合計レート: ${Math.trunc(scoreB)})`,
+          value: teamB.map(p => `> **${ROLE_MAP[p.assignedRole]}**: ${p.displayName.split('#')[0]} (${p.mu.toFixed(0)})`).join('\n') + `\n\n**[OPGG](${getOpgg(teamB)})**\n`,
+          inline: true,
+        },
+        {
+            name: '📈 レート差',
+            value: `**${diff}**`,
+            inline: false,
+        }
+      ],
+      timestamp: new Date().toISOString(),
+      footer: {
+        text: 'LoLチーム分けツール',
+      },
+    };
+
+    try {
+      const response = await fetch(teamsWebhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: 'LoLチーム分けツール',
+          // avatar_url: 'https://i.imgur.com/hGGY7p8.png', // A generic league-related icon
+          embeds: [embed],
+        }),
+      });
+
+      if (response.ok) {
+        setStatusMsg('Discordに送信しました！');
+        addLog('SUCCESS', 'Discord Webhook送信成功');
+      } else {
+        const errorText = await response.text();
+        throw new Error(`Discord APIエラー: ${response.status} ${errorText}`);
+      }
+    } catch (error) {
+      console.error('Discord webhook send failed:', error);
+      setStatusMsg('Discordへの送信に失敗しました。');
+      addLog('ERROR', `Discord Webhook送信失敗: ${error.message}`);
+      alert(`Discordへの送信に失敗しました: ${error.message}`);
+    } finally {
+      setTimeout(() => setStatusMsg(''), 3000);
+    }
+  };
+
+  const handleSaveWebhookUrls = (urls) => {
+    setTeamsWebhookUrl(urls.teams);
+    setMatchesWebhookUrl(urls.matches);
+    setShowProfile(false);
+    setStatusMsg('Webhook URLを保存しました！');
+    setTimeout(() => setStatusMsg(''), 3000);
+  };
+
   const copyResults = (type = 'standard') => {
     if (!teams) return;
 
@@ -656,7 +757,7 @@ function App() {
           const tagPart = p.displayName.split('#')[1];
           return encodeURIComponent(`${namePart}#${tagPart}`);
         }).join('%2C');
-        return `https://www.op.gg/multisearch/jp?summoners=${summoners}`;
+        return `[OPGG](https://www.op.gg/multisearch/jp?summoners=${summoners})`;
       };
       text += `\n\nTeam1 OPGG: ${getOpgg(team1)}\nTeam2 OPGG: ${getOpgg(team2)}`;
     }
@@ -667,42 +768,6 @@ function App() {
     });
   };
 
-  const exportJSON = async () => {
-    const data = players.reduce((acc, p) => {
-      acc[p.name] = { 
-        tag: p.tag, 
-        rate: ROLES.reduce((rAcc, r) => ({ ...rAcc, [r]: p[`${r}_rate`] }), {}), 
-        role: ROLES.reduce((rAcc, r) => ({ ...rAcc, [r]: p[r] }), {}) 
-      };
-      return acc;
-    }, {});
-    
-    const jsonStr = JSON.stringify(data, null, 2);
-    try {
-      if (window.showSaveFilePicker) {
-        const handle = await window.showSaveFilePicker({
-          suggestedName: 'player_dictionary.json',
-          types: [{ description: 'JSON File', accept: { 'application/json': ['.json'] } }],
-        });
-        const writable = await handle.createWritable();
-        await writable.write(jsonStr);
-        await writable.close();
-        setStatusMsg('保存しました。');
-        setTimeout(() => setStatusMsg(''), 3000);
-      } else {
-        const blob = new Blob([jsonStr], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'player_dictionary.json';
-        a.click();
-        URL.revokeObjectURL(url);
-      }
-        } catch (err) {
-          if (err.name !== 'AbortError') alert("保存に失敗しました。");
-        }
-      };
-    
       const handleUpdateRatings = async () => {
         setUpdateRatingsError(null);
         addLog('INFO', 'DB保存実行前のプレイヤーリスト:', players);
@@ -828,6 +893,98 @@ function App() {
         window.postMessage(messageData, "*");
       };
     
+      const handleSendMatchToDiscord = async (matchData, ratingChanges = null) => {
+        if (!matchData || !matchesWebhookUrl) {
+          setStatusMsg('試合データまたはWebhook URLがありません。');
+          setTimeout(() => setStatusMsg(''), 3000);
+          return;
+        }
+
+        setStatusMsg('Discordに送信中...');
+        addLog('SEND', '試合結果をDiscordに送信します', {matchData, ratingChanges});
+
+        const blueTeam = matchData.participants.filter(p => p.teamId === 100);
+        const redTeam = matchData.participants.filter(p => p.teamId === 200);
+
+        const getTeamStats = (team) => team.reduce((acc, p) => {
+            acc.kills += p.stats.kills;
+            acc.deaths += p.stats.deaths;
+            acc.assists += p.stats.assists;
+            return acc;
+        }, { kills: 0, deaths: 0, assists: 0 });
+
+        const blueTeamStats = getTeamStats(blueTeam);
+        const redTeamStats = getTeamStats(redTeam);
+        const blueTeamWon = blueTeam[0]?.stats.win;
+
+        const formatPlayer = (p) => {
+            const identity = matchData.participantIdentities.find(pi => pi.participantId === p.participantId);
+            const name = identity?.player.gameName || p.summonerName;
+            return `> ${p.championName} **${name}** (${p.stats.kills}/${p.stats.deaths}/${p.stats.assists})`;
+        };
+
+        const embed = {
+          title: `カスタムゲーム 対戦結果 (${new Date(matchData.gameCreation).toLocaleDateString()})`,
+          description: `試合時間: ${Math.floor(matchData.gameDuration / 60)}分${matchData.gameDuration % 60}秒`,
+          color: blueTeamWon ? 3447003 : 15158332, // Blue for win, Red for loss
+          fields: [
+            {
+              name: `🔵 ${blueTeamWon ? '勝利' : '敗北'} (ブルーチーム) - ${blueTeamStats.kills}/${blueTeamStats.deaths}/${blueTeamStats.assists}`,
+              value: blueTeam.map(formatPlayer).join('\n'),
+              inline: false,
+            },
+            {
+              name: `🔴 ${!blueTeamWon ? '勝利' : '敗北'} (レッドチーム) - ${redTeamStats.kills}/${redTeamStats.deaths}/${redTeamStats.assists}`,
+              value: redTeam.map(formatPlayer).join('\n'),
+              inline: false,
+            },
+          ],
+          timestamp: new Date().toISOString(),
+          footer: {
+            text: 'LoLチーム分けツール',
+          },
+        };
+
+        if (ratingChanges && ratingChanges.length > 0) {
+            embed.fields.push({
+                name: '📈 レート変動',
+                value: ratingChanges.map(c => {
+                    const sign = c.diff >= 0 ? '+' : '';
+                    const roleName = ROLE_MAP[c.role] || c.role;
+                    return `> **${c.name}** (${roleName}): ${c.oldRate.toFixed(0)} → **${c.newRate.toFixed(0)}** (${sign}${c.diff.toFixed(2)})`;
+                }).join('\n'),
+                inline: false,
+            });
+        }
+
+        try {
+          const response = await fetch(matchesWebhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              username: 'LoLチーム分けツール',
+              avatar_url: 'https://i.imgur.com/hGGY7p8.png',
+              embeds: [embed],
+            }),
+          });
+
+          if (response.ok) {
+            setStatusMsg('Discordに送信しました！');
+            addLog('SUCCESS', 'Discord Webhook(試合結果)送信成功');
+          } else {
+            const errorText = await response.text();
+            throw new Error(`Discord APIエラー: ${response.status} ${errorText}`);
+          }
+        } catch (error) {
+          console.error('Discord webhook send failed:', error);
+          setStatusMsg('Discordへの送信に失敗しました。');
+          addLog('ERROR', `Discord Webhook(試合結果)送信失敗: ${error.message}`);
+          alert(`Discordへの送信に失敗しました: ${error.message}`);
+        } finally {
+          // Do not clear status message here as it might be controlled by the calling function (handleUploadMatch)
+        }
+      };
+
       const handleUploadMatch = async (matchData) => {
         if (!matchData) {
           setStatusMsg('アップロードする試合が選択されていません。');
@@ -836,6 +993,9 @@ function App() {
         setIsUploading(true);
         setStatusMsg('試合結果をアップロード中...');
         addLog('SEND', 'サーバーへ試合結果をアップロードします', matchData);
+    
+        // Keep a copy of players before the update to calculate rating changes
+        const playersBeforeUpdate = JSON.parse(JSON.stringify(players));
     
         try {
           const response = await fetch('/api/upload', {
@@ -855,6 +1015,8 @@ function App() {
           setStatusMsg('アップロード成功！プレイヤーレートを更新しました。');
           addLog('SUCCESS', 'アップロード成功、レート更新', result);
           
+          let ratingChanges = [];
+    
           if (result.updated_ratings && result.updated_ratings.length > 0) {
             const LANE_TO_ROLE_MAP = Object.fromEntries(Object.entries(ROLE_MAP).map(([role, lane]) => [lane, role]));
             
@@ -864,6 +1026,23 @@ function App() {
                 ratingsByPuuid.set(rating.puuid, []);
               }
               ratingsByPuuid.get(rating.puuid).push(rating);
+            });
+    
+            // Calculate rating changes
+            result.updated_ratings.forEach(update => {
+              const oldPlayer = playersBeforeUpdate.find(p => p.puuid === update.puuid);
+              const role = LANE_TO_ROLE_MAP[update.lane];
+              if (oldPlayer && role) {
+                const oldRate = oldPlayer[`${role}_rate`] || 1500;
+                const newRate = update.mu;
+                ratingChanges.push({
+                  name: oldPlayer.name,
+                  role: role,
+                  oldRate: oldRate,
+                  newRate: newRate,
+                  diff: newRate - oldRate,
+                });
+              }
             });
     
             setPlayers(prevPlayers => {
@@ -882,6 +1061,11 @@ function App() {
                 return player;
               });
             });
+    
+            // Notify Discord with rating changes
+            if (matchesWebhookUrl) {
+              await handleSendMatchToDiscord(matchData, ratingChanges);
+            }
           }
     
         } catch (error) {
@@ -909,12 +1093,12 @@ function App() {
                       onFetchLobby={fetchLobbyFromExtension}
                       lcuInfo={lcuInfo}
                       isLoadingLobby={isLoadingLobby}
-                      onExport={exportJSON}
                       showDebug={showDebug}
                       onToggleDebug={() => setShowDebug(!showDebug)}
                       debugLogs={logs}
                       logsEndRef={logsEndRef}
                       onClearLogs={() => setLogs([])}
+                      onToggleProfile={() => setShowProfile(true)}
                     />
             
                     <div className="grid grid-cols-1 md:grid-cols-5 gap-8">
@@ -934,6 +1118,8 @@ function App() {
                           generateTeamsError={generateTeamsError}
                           onCopy={copyResults}
                           statusMsg={statusMsg}
+                          onSendToDiscord={handleSendTeamsToDiscord}
+                          teamsWebhookUrl={teamsWebhookUrl}
                         />
             
                         <PlayerList
@@ -964,9 +1150,21 @@ function App() {
               selectedMatch={selectedMatch}
               championMap={championMap}
               ddragonUrl={ddragonUrl}
+              onSendMatchToDiscord={handleSendMatchToDiscord}
+              matchesWebhookUrl={matchesWebhookUrl}
             />
           </div>
         </div>
+
+        {showProfile && (
+          <Profile
+            onClose={() => setShowProfile(false)}
+            onSave={handleSaveWebhookUrls}
+            initialTeamsWebhookUrl={teamsWebhookUrl}
+            initialMatchesWebhookUrl={matchesWebhookUrl}
+          />
+        )}
+
         <footer className="flex flex-col items-center gap-4 text-slate-500 pt-8 mt-8 border-t border-slate-800">
            <div className="flex gap-6">
               <a href="https://x.com/yamadalter" target="_blank" rel="noreferrer" className="hover:text-blue-400 transition-colors"><Twitter size={20} /></a>

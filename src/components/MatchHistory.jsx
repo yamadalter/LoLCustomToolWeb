@@ -1,4 +1,5 @@
 import React from 'react';
+import { Send } from 'lucide-react';
 
 const MatchDetails = ({ match, DDRAGON_URL }) => {
   if (!match || !DDRAGON_URL) return null;
@@ -109,6 +110,8 @@ const MatchHistory = ({
   selectedMatch,
   championMap,
   ddragonUrl: DDRAGON_URL,
+  onSendMatchToDiscord,
+  matchesWebhookUrl,
 }) => {
   return (
     <section className="bg-slate-800/50 backdrop-blur-sm p-6 rounded-xl border border-slate-700 shadow-xl">
@@ -128,6 +131,15 @@ const MatchHistory = ({
             className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:opacity-40 py-3 rounded-xl font-bold transition shadow-lg shadow-blue-900/20 active:scale-[0.98] text-white"
           >
             {isUploading ? 'アップロード中...' : 'DBへアップロード'}
+          </button>
+          <button
+            onClick={() => onSendMatchToDiscord(selectedMatch)}
+            disabled={!selectedMatch || !matchesWebhookUrl || isUploading}
+            className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:opacity-40 py-3 rounded-xl font-bold transition shadow-lg shadow-indigo-900/20 active:scale-[0.98] text-white"
+            title={!matchesWebhookUrl ? "プロファイル設定でWebhook URLを設定してください" : "Discordに結果を送信"}
+          >
+            <Send size={16} className="inline-block mr-1" />
+            Discordへ送信
           </button>
         </div>
         <select
@@ -163,4 +175,3 @@ const MatchHistory = ({
 };
 
 export default MatchHistory;
-
