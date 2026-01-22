@@ -29,35 +29,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return;
       }
 
-      const puuids = [
-        "0269e9d9-d7d9-5d85-b260-246a1b3626c8",
-        "07129cf4-ae14-5c43-9589-198cb0ff30b4",
-        "0dc7723b-2acc-5759-bd2f-0f582052e78b",
-        "10a0fcb3-6d07-5ac0-a414-30a33a583b2e",
-        "1426300c-d78d-5bbc-8383-f1ee9f3003cf",
-        "180627ac-b56e-5473-aa51-878a36f7f0e8",
-        "22f12cc3-725e-55b2-8c3b-45f9e42f2d45",
-        "23b2dabd-b0ab-57ae-ac68-2ffef44db5b5",
-        "2412aa3e-1c83-5d8b-82f5-bcaa221c18cc",
-        "26973110-b4b3-5051-a459-e545ce4d311b",
-        "29df5084-bf72-5def-a2c3-ead8483a5cb2",
-        "3b703cf3-cd49-56d3-9c64-68fbf4fc795b",
-        "570ebe21-f6e0-5c36-b4c6-8f57d73e5299",
-        "617851a5-19c0-59d0-b862-9448bc697cdb",
-        "774fe413-45b7-5e25-85c8-dbcbc3d0e89c",
-        "8ae6535a-400a-55dd-ad5d-b219fa11479a",
-        "9f606835-2296-5aa1-af01-20171e3fb807",
-        "a119f709-e58c-592c-b6aa-a04254fd1971",
-        "a8ec806d-962b-5996-8e8d-3215a7f373c2",
-        "b3662ea0-5d8d-5a29-8497-743610aabc73",
-        "ebfb1ec9-459b-559a-a40a-672cf4cc273e",
-        "ed98e58a-9f9d-551f-aa18-62948a399daf",
-        "f5b5dea3-9f98-51ca-b20d-13216331e171",
-        "f9d084f9-374f-536f-99bc-a22e8f216350",
-        "fdde135a-29d1-5ef4-8c9c-9099cbe213af"]
-      // 各プレイヤーの追加情報を取得
-      const playersPromises = puuids.map(async (pid) => {
-        const puuid = pid;
+      const playersPromises = data.members.map(async (member) => {
+        const puuid = member.puuid;
 
         // 1. puuidからサモナーネームとタグラインを取得
         const summonerRes = await fetch(`https://127.0.0.1:${port}/lol-summoner/v2/summoners/puuid/${puuid}`, {
@@ -128,25 +101,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const auth = 'Basic ' + btoa(`riot:${password}`);
 
         // Step 1: Get PUUID from Riot ID
-        const summonerSearchRes = await fetch(`https://127.0.0.1:${port}/lol-summoner/v1/summoners/names`, {
-          method: 'POST',
-          headers: {
-            'Authorization': auth,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify([{ "name": `${gameName}#${tagLine}` }])
+        const summonerSearchRes = await fetch(`https://127.0.0.1:${port}/lol-summoner/v1/summoners?name=${gameName}%23${tagLine} `, {
+          headers: { 'Authorization': auth }
         });
-
         if (!summonerSearchRes.ok) {
           throw new Error(`プレイヤー検索に失敗しました: ${summonerSearchRes.status} ${summonerSearchRes.statusText}`);
         }
         
-        const summonerDataArray = await summonerSearchRes.json();
-        if (!summonerDataArray || summonerDataArray.length === 0) {
+        const summonerData = await summonerSearchRes.json();
+        if (!summonerData || summonerData.length === 0) {
           throw new Error('プレイヤーが見つかりませんでした。');
         }
-        const summonerData = summonerDataArray[0];
-        const { puuid } = summonerData;
+        const puuid = summonerData.puuid;
 
         // Step 2: Get ranked stats using PUUID
         const rankedRes = await fetch(`https://127.0.0.1:${port}/lol-ranked/v1/ranked-stats/${puuid}`, {

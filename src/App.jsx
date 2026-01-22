@@ -420,20 +420,99 @@ function App() {
     }));
   };
 
-  const shuffleArray = (array) => {
-    const newArray = [...array];
-    for (let i = newArray.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+  // --- New Team Generation Logic ---
+
+  /**
+   * Generates all combinations of n elements from an array.
+   * @param {Array} arr The source array.
+   * @param {number} n The number of elements to combine.
+   * @returns {Generator<Array<any>>} A generator for the combinations.
+   */
+  function* combinations(arr, n) {
+    if (n === 0) {
+      yield [];
+      return;
     }
-    return newArray;
+    for (let i = 0; i <= arr.length - n; i++) {
+      for (const rest of combinations(arr.slice(i + 1), n - 1)) {
+        yield [arr[i], ...rest];
+      }
+    }
+  }
+
+  /**
+   * Generates the Cartesian product of multiple arrays.
+   * @param {Array<Array<any>>} arrays An array of arrays.
+   * @returns {Generator<Array<any>>} A generator for the product.
+   */
+  function* product(...arrays) {
+    if (arrays.length === 0) {
+      yield [];
+      return;
+    }
+    const [head, ...tail] = arrays;
+    for (const h of head) {
+      for (const t of product(...tail)) {
+        yield [h, ...t];
+      }
+    }
+  }
+
+  /**
+   * Creates valid 5-player team combinations from a list of 10 players.
+   * A valid team combination is one where both teams can cover all 5 roles.
+   * @param {Array<Object>} players - The list of 10 players.
+   * @returns {Array<Array<Array<Object>>>} An array of valid [teamA, teamB] pairs.
+   */
+  const createTeams = (players) => {
+    const validTeams = [];
+    for (const teamA of combinations(players, 5)) {
+      const teamB = players.filter(p => !teamA.includes(p));
+
+      const teamACanCoverAllRoles = ROLES.every(role =>
+        teamA.some(player => player[role])
+      );
+      const teamBCanCoverAllRoles = ROLES.every(role =>
+        teamB.some(player => player[role])
+      );
+
+      if (teamACanCoverAllRoles && teamBCanCoverAllRoles) {
+        validTeams.push([teamA, teamB]);
+      }
+    }
+    return validTeams;
   };
+
+  /**
+   * Assigns roles to a 5-player team, generating all valid unique assignments.
+   * @param {Array<Object>} team - A 5-player team.
+   * @returns {Array<Array<Object>>} An array of assigned teams, where each element is a 5-player array ordered by ROLES.
+   */
+  const assignRoles = (team) => {
+    const assignments = [];
+    const rolePlayerOptions = ROLES.map(role =>
+      team.filter(player => player[role])
+    );
+
+    if (rolePlayerOptions.some(options => options.length === 0)) {
+      return []; // A role cannot be filled.
+    }
+
+    for (const assignment of product(...rolePlayerOptions)) {
+      // Check for uniqueness (each player assigned to exactly one role)
+      if (new Set(assignment).size === 5) {
+        assignments.push(assignment);
+      }
+    }
+    return assignments;
+  };
+
 
   const handleGenerateTeams = async () => {
     setTeams(null);
     setGenerateTeamsError(null);
     setIsGeneratingTeams(true);
-    addLog('INFO', 'レーンバランスを考慮したチーム分けを開始します', { players, rateTolerance });
+    addLog('INFO', '組み合わせベースのチーム分けを開始します', { players, rateTolerance });
 
     const activePlayers = players.filter(p => ROLES.some(role => p[role]));
 
@@ -445,114 +524,78 @@ function App() {
       addLog('ERROR', errorMsg, { playerCount: activePlayers.length });
       return;
     }
+    
+    // Use a Promise to move the heavy computation off the main thread briefly, allowing UI to update.
+    await new Promise(resolve => setTimeout(resolve, 50));
 
     try {
-      let bestTeams = null;
+      const possibleTeamCombinations = createTeams(activePlayers);
+      if (possibleTeamCombinations.length === 0) {
+        throw new Error("全ロールをカバーできるチームの組み合わせが見つかりませんでした。各プレイヤーの希望ロールを確認してください。");
+      }
+
+      let bestTeamArrangement = null;
       let minDifference = Infinity;
-      const MAX_TRIES = 500;
 
-      for (let i = 0; i < MAX_TRIES; i++) {
-        const shuffledPlayers = shuffleArray(activePlayers);
+      for (const [teamA, teamB] of possibleTeamCombinations) {
+        const assignmentsA = assignRoles(teamA);
+        const assignmentsB = assignRoles(teamB);
 
-        const dedicatedPlayers = shuffledPlayers.filter(p => ROLES.filter(r => p[r]).length === 1);
-        const fillPlayers = shuffledPlayers.filter(p => ROLES.filter(r => p[r]).length !== 1);
+        if (assignmentsA.length === 0 || assignmentsB.length === 0) {
+          continue; // No valid role assignments for this team combination.
+        }
 
-        let teamA = Object.fromEntries(ROLES.map(r => [r, null]));
-        let teamB = Object.fromEntries(ROLES.map(r => [r, null]));
-        let scoreA = 0;
-        let scoreB = 0;
-        let unassignedPlayers = [];
+        for (const assignedTeamA of assignmentsA) {
+          for (const assignedTeamB of assignmentsB) {
+            
+            const scoreA = assignedTeamA.reduce((acc, player, index) => {
+                const role = ROLES[index];
+                return acc + (player[`${role}_rate`] || 1500);
+            }, 0);
 
-        ROLES.forEach(role => {
-          const rolePlayers = dedicatedPlayers.filter(p => p[role]);
-          
-          rolePlayers.forEach(player => {
-            const rate = player[`${role}_rate`] || 1500;
-            if (teamA[role] === null && (scoreA <= scoreB || teamB[role] !== null)) {
-              teamA[role] = player;
-              scoreA += rate;
-            } else if (teamB[role] === null) {
-              teamB[role] = player;
-              scoreB += rate;
-            } else {
-              unassignedPlayers.push(player);
-            }
-          });
-        });
-        
-        const remainingPlayers = [...fillPlayers, ...unassignedPlayers];
-        
-        remainingPlayers.forEach(player => {
-          let bestSlot = null;
-          let minDiffForPlayer = Infinity;
-          const availableRoles = ROLES.filter(r => player[r] && (teamA[r] === null || teamB[r] === null));
+            const scoreB = assignedTeamB.reduce((acc, player, index) => {
+                const role = ROLES[index];
+                return acc + (player[`${role}_rate`] || 1500);
+            }, 0);
 
-          for (const role of availableRoles) {
-            const rate = player[`${role}_rate`] || 1500;
-            if (teamA[role] === null) {
-              const diff = Math.abs((scoreA + rate) - scoreB);
-              if (diff < minDiffForPlayer) {
-                minDiffForPlayer = diff;
-                bestSlot = { team: 'A', role, rate };
-              }
-            }
-            if (teamB[role] === null) {
-              const diff = Math.abs(scoreA - (scoreB + rate));
-              if (diff < minDiffForPlayer) {
-                minDiffForPlayer = diff;
-                bestSlot = { team: 'B', role, rate };
-              }
+            const currentDifference = Math.abs(scoreA - scoreB);
+
+            if (currentDifference < minDifference) {
+              minDifference = currentDifference;
+              bestTeamArrangement = {
+                teamA: assignedTeamA,
+                teamB: assignedTeamB,
+                scoreA: scoreA,
+                scoreB: scoreB,
+              };
             }
           }
-          
-          if (bestSlot) {
-            if (bestSlot.team === 'A') {
-              teamA[bestSlot.role] = player;
-              scoreA += bestSlot.rate;
-            } else {
-              teamB[bestSlot.role] = player;
-              scoreB += bestSlot.rate;
-            }
-          }
-        });
+        }
+      }
 
-        const currentDifference = Math.abs(scoreA - scoreB);
-        if (currentDifference < minDifference) {
-          minDifference = currentDifference;
-          
-          const formatTeam = (teamObj) => ROLES.map(role => {
-            const player = teamObj[role];
-            if (!player) return null;
+      if (bestTeamArrangement) {
+        const formatTeam = (assignedTeam) => {
+          return assignedTeam.map((player, index) => {
+            const role = ROLES[index];
             return {
               ...player,
               displayName: `${player.name}#${player.tag}`,
               assignedRole: role,
               mu: player[`${role}_rate`] || 1500,
             };
-          }).filter(Boolean);
+          });
+        };
+        
+        const finalTeams = {
+          teamA: formatTeam(bestTeamArrangement.teamA),
+          teamB: formatTeam(bestTeamArrangement.teamB),
+          scoreA: bestTeamArrangement.scoreA.toFixed(2),
+          scoreB: bestTeamArrangement.scoreB.toFixed(2)
+        };
+        
+        setTeams(finalTeams);
+        addLog('SUCCESS', 'チーム分け成功', { finalTeams, minDifference });
 
-          const finalTeamA = formatTeam(teamA);
-          const finalTeamB = formatTeam(teamB);
-
-          if (finalTeamA.length + finalTeamB.length === 10) {
-            bestTeams = {
-              teamA: finalTeamA,
-              teamB: finalTeamB,
-              scoreA: finalTeamA.reduce((acc, p) => acc + p.mu, 0).toFixed(2),
-              scoreB: finalTeamB.reduce((acc, p) => acc + p.mu, 0).toFixed(2)
-            };
-          }
-        }
-
-        if (minDifference <= rateTolerance) {
-          addLog('INFO', `許容誤差内の組み合わせを発見しました (試行回数: ${i + 1})`);
-          break;
-        }
-      }
-
-      if (bestTeams) {
-        setTeams(bestTeams);
-        addLog('SUCCESS', 'チーム分け成功', { bestTeams, minDifference });
       } else {
         throw new Error('チーム分けに失敗しました。適切な組み合わせが見つかりません。');
       }
