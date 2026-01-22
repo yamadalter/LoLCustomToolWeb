@@ -25,7 +25,7 @@ ROLE_MAP = {
     'BOTTOM': 'bot',
     'UTILITY': 'sup'
 }
-trueskill.setup(mu=1500., sigma=300., beta=250., tau=10.)
+trueskill.setup(mu=1500., sigma=250., beta=250., tau=15.)
 trueskill.global_env()
 
 def get_engine():
