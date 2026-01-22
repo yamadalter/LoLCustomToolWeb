@@ -549,7 +549,7 @@ function App() {
       let bestTeamArrangement = null;
       let minDifference = Infinity;
 
-      for (const [teamA, teamB] of possibleTeamCombinations) {
+      searchLoop: for (const [teamA, teamB] of possibleTeamCombinations) {
         const assignmentsA = shuffleArray(assignRoles(teamA));
         const assignmentsB = shuffleArray(assignRoles(teamB));
 
@@ -559,15 +559,14 @@ function App() {
 
         for (const assignedTeamA of assignmentsA) {
           for (const assignedTeamB of assignmentsB) {
-            
             const scoreA = assignedTeamA.reduce((acc, player, index) => {
-                const role = ROLES[index];
-                return acc + (player[`${role}_rate`] || 1500);
+              const role = ROLES[index];
+              return acc + (player[`${role}_rate`] || 1500);
             }, 0);
 
             const scoreB = assignedTeamB.reduce((acc, player, index) => {
-                const role = ROLES[index];
-                return acc + (player[`${role}_rate`] || 1500);
+              const role = ROLES[index];
+              return acc + (player[`${role}_rate`] || 1500);
             }, 0);
 
             const currentDifference = Math.abs(scoreA - scoreB);
@@ -580,6 +579,12 @@ function App() {
                 scoreA: scoreA,
                 scoreB: scoreB,
               };
+
+              // If the difference is within tolerance, stop searching
+              if (minDifference <= rateTolerance) {
+                addLog('INFO', `許容誤差内の組み合わせを発見。計算を終了します。 (差: ${minDifference})`);
+                break searchLoop;
+              }
             }
           }
         }
