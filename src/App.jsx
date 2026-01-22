@@ -35,6 +35,7 @@ function App() {
   const [championMap, setChampionMap] = useState({});
   const [rateTolerance, setRateTolerance] = useState(500);
   
+  const [ddragonUrl, setDdragonUrl] = useState('');
   const [currentUserPuuid, setCurrentUserPuuid] = useState(null);
   
   // Debug State
@@ -53,6 +54,7 @@ function App() {
         const versionsResponse = await fetch('https://ddragon.leagueoflegends.com/api/versions.json');
         const versions = await versionsResponse.json();
         const latestVersion = versions[0];
+        setDdragonUrl(`https://ddragon.leagueoflegends.com/cdn/${latestVersion}`);
         addLog('INFO', `Latest DDragon version: ${latestVersion}`);
 
         const response = await fetch(`https://ddragon.leagueoflegends.com/cdn/${latestVersion}/data/en_US/champion.json`);
@@ -961,6 +963,7 @@ function App() {
               currentUserPuuid={currentUserPuuid}
               selectedMatch={selectedMatch}
               championMap={championMap}
+              ddragonUrl={ddragonUrl}
             />
           </div>
         </div>

@@ -1,8 +1,7 @@
 import React from 'react';
-import { DDRAGON_URL, DDRAGON_VERSION } from '../constants';
 
-const MatchDetails = ({ match }) => {
-  if (!match) return null;
+const MatchDetails = ({ match, DDRAGON_URL }) => {
+  if (!match || !DDRAGON_URL) return null;
 
   const blueTeam = match.participants.filter(p => p.teamId === 100);
   const redTeam = match.participants.filter(p => p.teamId === 200);
@@ -109,6 +108,7 @@ const MatchHistory = ({
   currentUserPuuid,
   selectedMatch,
   championMap,
+  ddragonUrl: DDRAGON_URL,
 }) => {
   return (
     <section className="bg-slate-800/50 backdrop-blur-sm p-6 rounded-xl border border-slate-700 shadow-xl">
@@ -156,7 +156,7 @@ const MatchHistory = ({
             );
           })}
         </select>
-        {selectedMatch && <MatchDetails match={selectedMatch} />}
+        {selectedMatch && <MatchDetails match={selectedMatch} DDRAGON_URL={DDRAGON_URL} />}
       </div>
     </section>
   );
