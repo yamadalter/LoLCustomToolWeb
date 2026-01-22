@@ -420,6 +420,15 @@ function App() {
     }));
   };
 
+  const shuffleArray = (array) => {
+    const newArray = [...array];
+    for (let i = newArray.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+    }
+    return newArray;
+  };
+
   // --- New Team Generation Logic ---
 
   /**
@@ -514,7 +523,7 @@ function App() {
     setIsGeneratingTeams(true);
     addLog('INFO', '組み合わせベースのチーム分けを開始します', { players, rateTolerance });
 
-    const activePlayers = players.filter(p => ROLES.some(role => p[role]));
+    let activePlayers = players.filter(p => ROLES.some(role => p[role]));
 
     if (activePlayers.length !== 10) {
       const errorMsg = "プレイヤー人数は10人にしてください。";
@@ -525,6 +534,9 @@ function App() {
       return;
     }
     
+    // Shuffle players to ensure variety in team compositions
+    activePlayers = shuffleArray(activePlayers);
+
     // Use a Promise to move the heavy computation off the main thread briefly, allowing UI to update.
     await new Promise(resolve => setTimeout(resolve, 50));
 
@@ -538,8 +550,8 @@ function App() {
       let minDifference = Infinity;
 
       for (const [teamA, teamB] of possibleTeamCombinations) {
-        const assignmentsA = assignRoles(teamA);
-        const assignmentsB = assignRoles(teamB);
+        const assignmentsA = shuffleArray(assignRoles(teamA));
+        const assignmentsB = shuffleArray(assignRoles(teamB));
 
         if (assignmentsA.length === 0 || assignmentsB.length === 0) {
           continue; // No valid role assignments for this team combination.
