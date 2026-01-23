@@ -151,7 +151,7 @@ function App() {
           lcuPlayers.forEach(lcuPlayer => {
             const existingPlayer = prevPlayers.find(p => p.puuid === lcuPlayer.puuid);
             if (!existingPlayer) {
-              const playerDbRatings = ratingsData.get(lcuPlayer.puuid);
+              const playerDbRatings = ratingsData ? ratingsData[lcuPlayer.puuid] : null;
               let fallbackRate = 1500;
               if (lcuPlayer.tier) {
                 const tier = lcuPlayer.tier.toUpperCase();
