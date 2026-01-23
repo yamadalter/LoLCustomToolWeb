@@ -751,12 +751,12 @@ function App() {
     const team1 = teams.teamA;
     const team2 = teams.teamB;
     
-    text = `\nチーム1 (合計レート: ${teams.scoreA})----
+    text = ` \nチーム1 (合計レート: ${teams.scoreA})----
 ` +
-            team1.map(p => `${p.displayName} `).join('\n') +
+            team1.map(p => `${ROLE_MAP[p.assignedRole]}:${p.displayName} `).join('\n') +
             `\n\nチーム2 (合計レート: ${teams.scoreB})----
 ` +
-            team2.map(p => `${p.displayName} `).join('\n');
+            team2.map(p => `${ROLE_MAP[p.assignedRole]}:${p.displayName} `).join('\n');
 
     if (type === 'opgg') {
       const getOpgg = (team) => {
