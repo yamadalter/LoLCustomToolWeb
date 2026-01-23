@@ -199,12 +199,10 @@ export function useTeamGenerator(players, teamsWebhookUrl, addLog) {
   const copyResults = (type = 'standard') => {
     if (!teams) return;
     const { teamA, teamB, scoreA, scoreB } = teams;
-    let text = `チーム1 (合計レート: ${scoreA})----
-` +
-               teamA.map(p => `${ROLE_MAP[p.assignedRole]}:${p.displayName}`).join('\n') + 
-               `\n\nチーム2 (合計レート: ${scoreB})----
-` +
-               teamB.map(p => `${ROLE_MAP[p.assignedRole]}:${p.displayName}`).join('\n');
+    let text = ` \nチーム1 (合計レート: ${scoreA})` +
+               teamA.map(p => `${ROLE_MAP[p.assignedRole]}:${p.displayName.split('#')[0]}`).join('\n') + 
+               `\n\nチーム2 (合計レート: ${scoreB})` +
+               teamB.map(p => `${ROLE_MAP[p.assignedRole]}:${p.displayName.split('#')[0]}`).join('\n');
     
     if (type === 'opgg') {
       const getOpgg = (team) => `https://www.op.gg/multisearch/jp?summoners=${team.map(p => encodeURIComponent(p.displayName)).join('%2C')}`;
