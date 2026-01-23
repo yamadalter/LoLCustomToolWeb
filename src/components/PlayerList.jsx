@@ -77,7 +77,7 @@ const PlayerList = ({
                     <input
                       type="number"
                       step="100"
-                      className="w-16 bg-slate-900/50 border border-slate-700/50 rounded px-2 py-1 text-center font-mono text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all"
+                      className={`w-16 bg-slate-900/50 border border-slate-700/50 rounded px-2 py-1 text-center font-mono text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all ${p.isRegistered === false ? 'text-red-400' : ''}`}
                       value={p[`${role}_rate`] || ''}
                       onChange={(e) => onUpdatePlayer(p.id, `${role}_rate`, parseFloat(e.target.value) || 0)}
                     />

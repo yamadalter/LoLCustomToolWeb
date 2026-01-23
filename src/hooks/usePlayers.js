@@ -118,6 +118,7 @@ export function usePlayers(addLog, lcuInfo) {
           const existingPlayer = prevPlayers.find(p => p.puuid === lcuPlayer.puuid);
           if (!existingPlayer) {
             const playerDbRatings = dbRatings.get(lcuPlayer.puuid);
+            const isRegistered = !!playerDbRatings;
             let fallbackRate = 1500;
             if (lcuPlayer.tier) {
               const tier = lcuPlayer.tier.toUpperCase();
@@ -142,6 +143,7 @@ export function usePlayers(addLog, lcuInfo) {
               puuid: lcuPlayer.puuid,
               name: lcuPlayer.name,
               tag: lcuPlayer.tag || 'JP1',
+              isRegistered,
               ...roleRates,
               ...ROLES.reduce((acc, role) => ({ ...acc, [role]: true }), {})
             });
@@ -188,6 +190,7 @@ export function usePlayers(addLog, lcuInfo) {
         puuid: searchedPlayer.puuid,
         name: searchedPlayer.name,
         tag: searchedPlayer.tag,
+        isRegistered: false,
         ...roleRates,
         ...ROLES.reduce((acc, role) => ({ ...acc, [role]: true }), {})
     };
@@ -233,6 +236,13 @@ export function usePlayers(addLog, lcuInfo) {
       if (!response.ok) throw new Error(result.error || 'レートの更新に失敗しました。');
       setStatusMsg('プレイヤーレートをDBに保存しました！');
       addLog('SUCCESS', 'プレイヤーレートのDB保存成功', result);
+      setPlayers(prevPlayers => 
+        prevPlayers.map(p => 
+          playersWithPuuid.some(p_puuid => p_puuid.puuid === p.puuid) 
+            ? { ...p, isRegistered: true } 
+            : p
+        )
+      );
     } catch (error) {
       const errorMsg = error.message || '不明なエラーが発生しました。';
       setUpdateRatingsError(errorMsg);
@@ -272,6 +282,7 @@ export function usePlayers(addLog, lcuInfo) {
               MIDDLE_rate: dbPlayer.mid,
               BOTTOM_rate: dbPlayer.bot,
               UTILITY_rate: dbPlayer.sup,
+              isRegistered: true,
             };
           }
           return player;
