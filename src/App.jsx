@@ -146,46 +146,54 @@ function App() {
           }
         }
   
-        const newPlayers = lcuPlayers.map(p => {
-          const playerDbRatings = dbRatings.get(p.puuid);
-          
-          let fallbackRate = 1500;
-          if (p.tier) {
-            const tier = p.tier.toUpperCase();
-            const division = p.division ? p.division.toUpperCase() : '';
-            const rankString = ['MASTER', 'GRANDMASTER', 'CHALLENGER'].includes(tier) ? tier : `${tier} ${division}`.trim();
-            fallbackRate = RANK_MAP[rankString] !== undefined ? RANK_MAP[rankString] : 1500;
-          }
-          const roleRates = {};
-          if (playerDbRatings) {
-            // DBに情報があれば、各レーンのレートを使用
-            ROLES.forEach(role => {
-              const lane = ROLE_MAP[role]; // 'TOP' -> 'top'
-              roleRates[`${role}_rate`] = playerDbRatings[lane] || fallbackRate;
-            });
-          } else {
-            // DBに情報がなければ、全レーンにフォールバックレートを設定
-            ROLES.forEach(role => {
-              roleRates[`${role}_rate`] = fallbackRate;
-            });
-          }
-    
-          return {
-            id: p.puuid,
-            puuid: p.puuid,
-            name: p.name,
-            tag: p.tag || 'JP1',
-            ...roleRates,
-            ...ROLES.reduce((acc, role) => ({ ...acc, [role]: true }), {})
-          };
-        });
+        setPlayers(prevPlayers => {
+          const newPlayersToAdd = [];
+          lcuPlayers.forEach(lcuPlayer => {
+            const existingPlayer = prevPlayers.find(p => p.puuid === lcuPlayer.puuid);
+            if (!existingPlayer) {
+              const playerDbRatings = dbRatings.get(lcuPlayer.puuid);
+              let fallbackRate = 1500;
+              if (lcuPlayer.tier) {
+                const tier = lcuPlayer.tier.toUpperCase();
+                const division = lcuPlayer.division ? lcuPlayer.division.toUpperCase() : '';
+                const rankString = ['MASTER', 'GRANDMASTER', 'CHALLENGER'].includes(tier) ? tier : `${tier} ${division}`.trim();
+                fallbackRate = RANK_MAP[rankString] !== undefined ? RANK_MAP[rankString] : 1500;
+              }
+              const roleRates = {};
+              if (playerDbRatings) {
+                ROLES.forEach(role => {
+                  const lane = ROLE_MAP[role];
+                  roleRates[`${role}_rate`] = playerDbRatings[lane] || fallbackRate;
+                });
+              } else {
+                ROLES.forEach(role => {
+                  roleRates[`${role}_rate`] = fallbackRate;
+                });
+              }
               
-        // ★★★ ロジック変更: マージするのではなく、完全に置き換える
-        setPlayers(newPlayers);
-  
-        setStatusMsg(`${newPlayers.length}人のプレイヤーを読み込み/更新しました。`);
-        addLog('SUCCESS', `プレイヤー読み込み/更新完了: ${newPlayers.length}人`);
-        setTimeout(() => setStatusMsg(''), 3000);
+              newPlayersToAdd.push({
+                id: lcuPlayer.puuid,
+                puuid: lcuPlayer.puuid,
+                name: lcuPlayer.name,
+                tag: lcuPlayer.tag || 'JP1',
+                ...roleRates,
+                ...ROLES.reduce((acc, role) => ({ ...acc, [role]: true }), {})
+              });
+            }
+          });
+
+          if (newPlayersToAdd.length > 0) {
+            setStatusMsg(`${newPlayersToAdd.length}人の新しいプレイヤーを読み込みました。`);
+            addLog('SUCCESS', `新しいプレイヤーを追加: ${newPlayersToAdd.length}人`);
+            setTimeout(() => setStatusMsg(''), 3000);
+          } else {
+            setStatusMsg('新しいプレイヤーはいませんでした。');
+            addLog('INFO', '追加する新しいプレイヤーはいません');
+            setTimeout(() => setStatusMsg(''), 3000);
+          }
+          
+          return [...prevPlayers, ...newPlayersToAdd];
+        });
   
       } else {
         const errorMsg = event.data.error || 'ロビー情報の取得に失敗しました。';
@@ -963,7 +971,7 @@ function App() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               username: 'LoLチーム分けツール',
-              avatar_url: 'https://i.imgur.com/hGGY7p8.png',
+              // avatar_url: 'https://i.imgur.com/hGGY7p8.png',
               embeds: [embed],
             }),
           });
