@@ -199,9 +199,9 @@ export function useTeamGenerator(players, teamsWebhookUrl, addLog) {
   const copyResults = (type = 'standard') => {
     if (!teams) return;
     const { teamA, teamB, scoreA, scoreB } = teams;
-    let text = ` \nチーム1 (合計レート: ${scoreA})` +
+    let text = ` \nチーム1 (合計レート: ${scoreA})\n` +
                teamA.map(p => `${ROLE_MAP[p.assignedRole]}:${p.displayName.split('#')[0]}`).join('\n') + 
-               `\n\nチーム2 (合計レート: ${scoreB})` +
+               `\n\nチーム2 (合計レート: ${scoreB})\n` +
                teamB.map(p => `${ROLE_MAP[p.assignedRole]}:${p.displayName.split('#')[0]}`).join('\n');
     
     if (type === 'opgg') {
