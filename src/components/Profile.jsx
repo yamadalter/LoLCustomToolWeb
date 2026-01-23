@@ -1,19 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, AlertTriangle } from 'lucide-react';
 
-const Profile = ({ onClose, onSave, initialTeamsWebhookUrl, initialMatchesWebhookUrl }) => {
+const Profile = ({ onClose, onSave, initialTeamsWebhookUrl, initialMatchesWebhookUrl, initialIsRatingUpdateEnabled }) => {
   const [teamsWebhookUrl, setTeamsWebhookUrl] = useState('');
   const [matchesWebhookUrl, setMatchesWebhookUrl] = useState('');
+  const [isRatingUpdateEnabled, setIsRatingUpdateEnabled] = useState(true);
 
   useEffect(() => {
     setTeamsWebhookUrl(initialTeamsWebhookUrl || '');
     setMatchesWebhookUrl(initialMatchesWebhookUrl || '');
-  }, [initialTeamsWebhookUrl, initialMatchesWebhookUrl]);
+    setIsRatingUpdateEnabled(initialIsRatingUpdateEnabled ?? true);
+  }, [initialTeamsWebhookUrl, initialMatchesWebhookUrl, initialIsRatingUpdateEnabled]);
 
   const handleSave = () => {
     onSave({
       teams: teamsWebhookUrl,
       matches: matchesWebhookUrl,
+      isRatingUpdateEnabled: isRatingUpdateEnabled,
     });
   };
 
@@ -54,6 +57,26 @@ const Profile = ({ onClose, onSave, initialTeamsWebhookUrl, initialMatchesWebhoo
                 className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
                 placeholder="https://discord.com/api/webhooks/..."
               />
+            </div>
+            <div className="flex items-center justify-between pt-4">
+              <div>
+                <label htmlFor="enableRatingUpdate" className="block text-sm font-medium text-slate-300">
+                  戦績アップロード時にレートを更新する
+                </label>
+                <p className="text-xs text-slate-500">
+                  オフにすると、試合結果を記録するだけでレートは変動しません。
+                </p>
+              </div>
+              <label htmlFor="enableRatingUpdate" className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  id="enableRatingUpdate"
+                  className="sr-only peer"
+                  checked={isRatingUpdateEnabled}
+                  onChange={(e) => setIsRatingUpdateEnabled(e.target.checked)}
+                />
+                <div className="w-11 h-6 bg-slate-700 rounded-full peer peer-focus:ring-4 peer-focus:ring-indigo-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+              </label>
             </div>
           </div>
 

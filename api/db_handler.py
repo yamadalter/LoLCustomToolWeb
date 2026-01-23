@@ -75,9 +75,10 @@ def initialize_database(engine):
             raise
 
 
-def upload_match_data(d, engine):
+def upload_match_data(d, engine, update_rating=True):
     """
     受け取った辞書データをPandas DataFrameに変換し、DBにupsertする
+    update_rating: Falseの場合、レート計算と更新をスキップする
     """
     # フロントエンドから渡される 'gameId' または Cassiopeia の 'id' を取得
     gameId_from_frontend = d.get('gameId')
@@ -187,84 +188,89 @@ def upload_match_data(d, engine):
             df_participants.drop_duplicates(subset=['participantId', 'gameId'], keep='first', inplace=True)
             df_participants = df_participants.set_index(['participantId', 'gameId'])
 
-            all_puuids = df_participants['puuid'].unique().tolist()
-            
-            # 既存プレイヤーの全レーンレートを取得
-            query = text("SELECT puuid, lane, mu, sigma FROM player_ratings WHERE puuid IN :puuids")
-            with engine.connect() as conn:
-                # all_puuidsが空でないことを確認
-                if all_puuids:
-                    existing_ratings_df = pd.read_sql(query, conn, params={'puuids': tuple(all_puuids)})
-                else:
-                    existing_ratings_df = pd.DataFrame(columns=['puuid', 'lane', 'mu', 'sigma'])
+            df_player_ratings = pd.DataFrame([])
+            df_rating_history = pd.DataFrame([])
 
-            # (puuid, lane)をキーとするRatingオブジェクトの辞書を作成
-            existing_ratings = {
-                (row['puuid'], row['lane']): trueskill.Rating(mu=row['mu'], sigma=row['sigma'])
-                for _, row in existing_ratings_df.iterrows()
-            }
+            if update_rating:
+                all_puuids = df_participants['puuid'].unique().tolist()
+                
+                # 既存プレイヤーの全レーンレートを取得
+                query = text("SELECT puuid, lane, mu, sigma FROM player_ratings WHERE puuid IN :puuids")
+                with engine.connect() as conn:
+                    # all_puuidsが空でないことを確認
+                    if all_puuids:
+                        existing_ratings_df = pd.read_sql(query, conn, params={'puuids': tuple(all_puuids)})
+                    else:
+                        existing_ratings_df = pd.DataFrame(columns=['puuid', 'lane', 'mu', 'sigma'])
 
-            # 試合参加者のRatingオブジェクトを準備
-            player_ratings = {
-                (row['puuid'], ROLE_MAP[row['position']]): existing_ratings.get((row['puuid'], ROLE_MAP[row['position']]), trueskill.Rating())
-                for _, row in df_participants.iterrows()
-            }
+                # (puuid, lane)をキーとするRatingオブジェクトの辞書を作成
+                existing_ratings = {
+                    (row['puuid'], row['lane']): trueskill.Rating(mu=row['mu'], sigma=row['sigma'])
+                    for _, row in existing_ratings_df.iterrows()
+                }
 
-            # チーム分け
-            team0_ratings_dict = {
-                (puuid, lane): rating for (puuid, lane), rating in player_ratings.items()
-                if puuid in df_participants[df_participants['teamId'] == 0]['puuid'].values
-            }
-            team1_ratings_dict = {
-                (puuid, lane): rating for (puuid, lane), rating in player_ratings.items()
-                if puuid in df_participants[df_participants['teamId'] == 1]['puuid'].values
-            }
+                # 試合参加者のRatingオブジェクトを準備
+                player_ratings = {
+                    (row['puuid'], ROLE_MAP[row['position']]): existing_ratings.get((row['puuid'], ROLE_MAP[row['position']]), trueskill.Rating())
+                    for _, row in df_participants.iterrows()
+                }
 
-            # 勝敗ランクを設定
-            winning_team_row = df_teams[df_teams['isWinner'] == 'Win']
-            if winning_team_row.empty:
-                raise ValueError("Winner team not found in match data. Remake game?")
-            winner_team_id = winning_team_row.index.get_level_values('teamId')[0]
-            ranks = [0, 1] if winner_team_id == 0 else [1, 0]
+                # チーム分け
+                team0_ratings_dict = {
+                    (puuid, lane): rating for (puuid, lane), rating in player_ratings.items()
+                    if puuid in df_participants[df_participants['teamId'] == 0]['puuid'].values
+                }
+                team1_ratings_dict = {
+                    (puuid, lane): rating for (puuid, lane), rating in player_ratings.items()
+                    if puuid in df_participants[df_participants['teamId'] == 1]['puuid'].values
+                }
 
-            # レート計算
-            new_team0_ratings, new_team1_ratings = trueskill.rate([team0_ratings_dict, team1_ratings_dict], ranks=ranks)
+                # 勝敗ランクを設定
+                winning_team_row = df_teams[df_teams['isWinner'] == 'Win']
+                if winning_team_row.empty:
+                    raise ValueError("Winner team not found in match data. Remake game?")
+                winner_team_id = winning_team_row.index.get_level_values('teamId')[0]
+                ranks = [0, 1] if winner_team_id == 0 else [1, 0]
 
-            # 更新用DataFrame作成
-            updated_ratings = {**new_team0_ratings, **new_team1_ratings}
-            
-            new_ratings_list = []
-            for key, rating in updated_ratings.items():
-                new_sigma = max(rating.sigma, MIN_SIGMA)  # sigmaがMIN_SIGMA未満にならないように下限を設定
-                new_ratings_list.append({
-                    'puuid': key[0],
-                    'lane': key[1],
-                    'mu': rating.mu,
-                    'sigma': new_sigma
-                })
-            
-            df_player_ratings = pd.DataFrame(new_ratings_list)
-            
-            if not df_player_ratings.empty:
-                df_player_ratings.set_index(['puuid', 'lane'], inplace=True)
+                # レート計算
+                new_team0_ratings, new_team1_ratings = trueskill.rate([team0_ratings_dict, team1_ratings_dict], ranks=ranks)
 
-                # レーティング履歴の記録
-                history_list = []
-                for (puuid, lane), new_rating in updated_ratings.items():
-                    old_rating = player_ratings.get((puuid, lane), trueskill.Rating())
-                    new_sigma = max(new_rating.sigma, MIN_SIGMA) # sigmaがMIN_SIGMA未満にならないように下限を設定
-                    history_list.append({
-                        'puuid': puuid,
-                        'lane': lane,
-                        'gameId': gameId,
-                        'mu_before': old_rating.mu,
-                        'sigma_before': old_rating.sigma,
-                        'mu_after': new_rating.mu,
-                        'sigma_after': new_sigma,
+                # 更新用DataFrame作成
+                updated_ratings = {**new_team0_ratings, **new_team1_ratings}
+                
+                new_ratings_list = []
+                for key, rating in updated_ratings.items():
+                    new_sigma = max(rating.sigma, MIN_SIGMA)  # sigmaがMIN_SIGMA未満にならないように下限を設定
+                    new_ratings_list.append({
+                        'puuid': key[0],
+                        'lane': key[1],
+                        'mu': rating.mu,
+                        'sigma': new_sigma
                     })
-                df_rating_history = pd.DataFrame(history_list)
-                if not df_rating_history.empty:
-                    df_rating_history.set_index(['puuid', 'lane', 'gameId'], inplace=True)
+                
+                df_player_ratings = pd.DataFrame(new_ratings_list)
+                
+                if not df_player_ratings.empty:
+                    df_player_ratings.set_index(['puuid', 'lane'], inplace=True)
+
+                    # レーティング履歴の記録
+                    history_list = []
+                    for (puuid, lane), new_rating in updated_ratings.items():
+                        old_rating = player_ratings.get((puuid, lane), trueskill.Rating())
+                        new_sigma = max(new_rating.sigma, MIN_SIGMA) # sigmaがMIN_SIGMA未満にならないように下限を設定
+                        history_list.append({
+                            'puuid': puuid,
+                            'lane': lane,
+                            'gameId': gameId,
+                            'mu_before': old_rating.mu,
+                            'sigma_before': old_rating.sigma,
+                            'mu_after': new_rating.mu,
+                            'sigma_after': new_sigma,
+                        })
+                    df_rating_history = pd.DataFrame(history_list)
+                    if not df_rating_history.empty:
+                        df_rating_history.set_index(['puuid', 'lane', 'gameId'], inplace=True)
+
 
         # データフレームをデータベースに登録
         with engine.connect() as conn:
@@ -290,7 +296,10 @@ def upload_match_data(d, engine):
                 trans.rollback()
                 raise
         
-        return df_player_ratings.reset_index().to_dict(orient='records')
+        if not df_player_ratings.empty:
+            return df_player_ratings.reset_index().to_dict(orient='records')
+        else:
+            return []
     except Exception as e:
         print(f"An error occurred in upload_match_data: {e}")
         # 必要に応じて、ここでNoneや空の辞書を返すなどのエラーハンドリングを追加できます

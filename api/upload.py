@@ -31,6 +31,7 @@ class handler(BaseHTTPRequestHandler):
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
             match_data = json.loads(post_data)
+            update_rating_flag = match_data.get('updateRating', True)
         except (TypeError, json.JSONDecodeError):
             self.send_response(400)
             self.send_header('Content-type', 'application/json')
@@ -47,7 +48,7 @@ class handler(BaseHTTPRequestHandler):
             # initialize_database(engine) 
             
             # データアップロード
-            updated_ratings = upload_match_data(match_data, engine)
+            updated_ratings = upload_match_data(match_data, engine, update_rating=update_rating_flag)
             
             # 成功レスポンス
             self.send_response(200)

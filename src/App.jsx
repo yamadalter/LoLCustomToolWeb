@@ -43,6 +43,8 @@ function App() {
   const [showProfile, setShowProfile] = useState(false);
   const [teamsWebhookUrl, setTeamsWebhookUrl] = useState('');
   const [matchesWebhookUrl, setMatchesWebhookUrl] = useState('');
+  const [isRatingUpdateEnabled, setIsRatingUpdateEnabled] = useState(true);
+  
   
   // Debug State
   const [showDebug, setShowDebug] = useState(false);
@@ -95,6 +97,9 @@ function App() {
     if (savedTeamsUrl) setTeamsWebhookUrl(savedTeamsUrl);
     const savedMatchesUrl = localStorage.getItem('lol_custom_matches_webhook_url');
     if (savedMatchesUrl) setMatchesWebhookUrl(savedMatchesUrl);
+    const savedRatingUpdateEnabled = localStorage.getItem('lol_custom_rating_update_enabled');
+    // 保存された値が 'false' の文字列である場合のみ false にする
+    setIsRatingUpdateEnabled(savedRatingUpdateEnabled !== 'false');
   }, []);
 
   useEffect(() => {
@@ -112,6 +117,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem('lol_custom_matches_webhook_url', matchesWebhookUrl);
   }, [matchesWebhookUrl]);
+
+  useEffect(() => {
+    localStorage.setItem('lol_custom_rating_update_enabled', isRatingUpdateEnabled);
+  }, [isRatingUpdateEnabled]);
 
   const handleMessage = useCallback(async (event) => {
     if (event.data && (event.data.type === 'LCU_LOBBY_DATA_RESPONSE' || event.data.type === 'LCU_ERROR' || event.data.type === 'LCU_SEARCH_PLAYER_RESPONSE')) {
@@ -739,11 +748,12 @@ function App() {
     }
   };
 
-  const handleSaveWebhookUrls = (urls) => {
-    setTeamsWebhookUrl(urls.teams);
-    setMatchesWebhookUrl(urls.matches);
+  const handleSaveProfile = (settings) => {
+    setTeamsWebhookUrl(settings.teams);
+    setMatchesWebhookUrl(settings.matches);
+    setIsRatingUpdateEnabled(settings.isRatingUpdateEnabled);
     setShowProfile(false);
-    setStatusMsg('Webhook URLを保存しました！');
+    setStatusMsg('プロファイル設定を保存しました！');
     setTimeout(() => setStatusMsg(''), 3000);
   };
 
@@ -1014,7 +1024,10 @@ function App() {
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify(matchData),
+            body: JSON.stringify({
+              ...matchData,
+              updateRating: isRatingUpdateEnabled
+            }),
           });
     
           const result = await response.json();
@@ -1170,9 +1183,10 @@ function App() {
         {showProfile && (
           <Profile
             onClose={() => setShowProfile(false)}
-            onSave={handleSaveWebhookUrls}
+            onSave={handleSaveProfile}
             initialTeamsWebhookUrl={teamsWebhookUrl}
             initialMatchesWebhookUrl={matchesWebhookUrl}
+            initialIsRatingUpdateEnabled={isRatingUpdateEnabled}
           />
         )}
 
