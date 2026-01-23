@@ -25,8 +25,10 @@ ROLE_MAP = {
     'BOTTOM': 'bot',
     'UTILITY': 'sup'
 }
-trueskill.setup(mu=1500., sigma=250., beta=250., tau=15.)
+trueskill.setup(mu=1500., sigma=300., beta=1500., tau=15.)
 trueskill.global_env()
+MIN_SIGMA = 250.0  # sigmaの下限値
+
 
 def get_engine():
     """環境変数から接続情報を読み込み、DBエンジンを作成して返す"""
@@ -233,7 +235,7 @@ def upload_match_data(d, engine):
             
             new_ratings_list = []
             for key, rating in updated_ratings.items():
-                new_sigma = max(rating.sigma, 200.0)  # sigmaが200未満にならないように下限を設定
+                new_sigma = max(rating.sigma, MIN_SIGMA)  # sigmaがMIN_SIGMA未満にならないように下限を設定
                 new_ratings_list.append({
                     'puuid': key[0],
                     'lane': key[1],
@@ -250,7 +252,7 @@ def upload_match_data(d, engine):
                 history_list = []
                 for (puuid, lane), new_rating in updated_ratings.items():
                     old_rating = player_ratings.get((puuid, lane), trueskill.Rating())
-                    new_sigma = max(new_rating.sigma, 200.0) # sigmaが200未満にならないように下限を設定
+                    new_sigma = max(new_rating.sigma, MIN_SIGMA) # sigmaがMIN_SIGMA未満にならないように下限を設定
                     history_list.append({
                         'puuid': puuid,
                         'lane': lane,
@@ -264,7 +266,6 @@ def upload_match_data(d, engine):
                 if not df_rating_history.empty:
                     df_rating_history.set_index(['puuid', 'lane', 'gameId'], inplace=True)
 
-        
         # データフレームをデータベースに登録
         with engine.connect() as conn:
             trans = conn.begin()
