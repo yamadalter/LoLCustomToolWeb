@@ -125,7 +125,7 @@ function App() {
         const lcuPlayers = event.data.data;
         const puuids = lcuPlayers.map(p => p.puuid).filter(Boolean);
   
-        let dbRatings = new Map(); // Mapを使用
+        const dbRatings = new Map(); // Mapを使用
         if (puuids.length > 0) {
           try {
             addLog('SEND', 'DBからプレイヤーレートを取得します', { puuids });
@@ -137,6 +137,9 @@ function App() {
             const ratingsData = await response.json();
             if (response.ok) {
               addLog('SUCCESS', 'DBレート取得成功', ratingsData);
+              if (Array.isArray(ratingsData)) {
+                ratingsData.forEach(p => dbRatings.set(p.puuid, p));
+              }
             } else {
               throw new Error(ratingsData.error || 'DBレートの取得に失敗しました。');
             }
@@ -151,7 +154,7 @@ function App() {
           lcuPlayers.forEach(lcuPlayer => {
             const existingPlayer = prevPlayers.find(p => p.puuid === lcuPlayer.puuid);
             if (!existingPlayer) {
-              const playerDbRatings = ratingsData ? ratingsData[lcuPlayer.puuid] : null;
+              const playerDbRatings = dbRatings.get(lcuPlayer.puuid);
               let fallbackRate = 1500;
               if (lcuPlayer.tier) {
                 const tier = lcuPlayer.tier.toUpperCase();
