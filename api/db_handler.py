@@ -25,7 +25,7 @@ ROLE_MAP = {
     'BOTTOM': 'bot',
     'UTILITY': 'sup'
 }
-trueskill.setup(mu=1500., sigma=450., beta=1500., tau=15.)
+trueskill.setup(mu=1500., sigma=450., beta=1500., tau=10.)
 trueskill.global_env()
 MIN_SIGMA = 350.0  # sigmaの下限値
 
