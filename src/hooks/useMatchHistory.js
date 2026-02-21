@@ -65,7 +65,21 @@ export function useMatchHistory(lcuInfo, matchesWebhookUrl, isRatingUpdateEnable
         }
       });
     }
-    
+    // Add championName to bans
+    if (extractedGames.length > 0 && extractedGames[0].teams) {
+      extractedGames.forEach(match => {
+        if (match.teams && Array.isArray(match.teams)) {
+          match.teams.forEach(team => {
+            if (team.bans && Array.isArray(team.bans)) {
+              team.bans.forEach(ban => {
+                ban.championName = championMap[ban.championId] || 'Unknown';
+              });
+            }
+          });
+        }
+      });
+    }
+
     setMatches(extractedGames);
     setCurrentUserPuuid(puuid);
     setStatusMsg('対戦履歴を取得しました。');
