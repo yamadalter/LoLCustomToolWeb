@@ -2,7 +2,19 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/**/*.py",
+      "src": "api/update_ratings.py",
+      "use": "@vercel/python"
+    },
+    {
+      "src": "api/get_all_ratings.py",
+      "use": "@vercel/python"
+    },
+    {
+      "src": "api/generate_teams.py",
+      "use": "@vercel/python"
+    },
+    {
+      "src": "api/upload.py",
       "use": "@vercel/python"
     },
     {
