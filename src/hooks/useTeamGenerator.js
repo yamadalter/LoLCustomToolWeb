@@ -111,9 +111,9 @@ export function useTeamGenerator(players, teamsWebhookUrl, addLog) {
           for (const assignedB of assignmentsB) {
             const scoreA = assignedA.reduce((acc, p, i) => acc + (p[`${ROLES[i]}_rate`] || 1500), 0);
             const scoreB = assignedB.reduce((acc, p, i) => acc + (p[`${ROLES[i]}_rate`] || 1500), 0);
-            const diff = Math.abs(scoreA - scoreB);
+            const diff = scoreB - scoreA;
 
-            if (diff < minDifference) {
+            if (0 <= diff && diff < minDifference) {
               minDifference = diff;
               bestArrangement = { teamA: assignedA, teamB: assignedB, scoreA, scoreB };
               if (minDifference <= rateTolerance) {
