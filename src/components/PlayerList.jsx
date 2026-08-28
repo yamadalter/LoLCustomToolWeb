@@ -1,6 +1,6 @@
 import React from 'react';
 import { Trash2, Settings, Swords, Save, Database } from 'lucide-react';
-import { ROLES } from '../constants';
+import { ROLES, getRankColor } from '../constants';
 
 const PlayerList = ({
   players,
@@ -64,7 +64,13 @@ const PlayerList = ({
         <tbody className="text-sm">
           {players.map((p) => (
             <tr key={p.id} className="border-b border-slate-700/30 hover:bg-slate-700/20 transition-colors">
-              <td className="py-4 font-medium max-w-[150px] truncate text-slate-200">{p.name}</td>
+              <td className="py-4 font-medium max-w-[150px] truncate text-slate-200" style={{ color: getRankColor(
+  Object.keys(ROLES)
+    .filter(role => p[role])
+    .map(role => p[`${role}_rate`] || 1500)
+    .reduce((sum, rate) => sum + rate, 0) /
+    Math.max(1, Object.keys(ROLES).filter(role => p[role]).length)
+)}}>{p.name}</td>
               {ROLES.map(role => (
                 <td key={role} className="py-4 text-center">
                   <div className="flex flex-col items-center gap-1.5">

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Copy, ExternalLink, Loader2, Send } from 'lucide-react';
+import { getRankColor } from '../constants';
 
 const TeamResults = ({ result, teams, onCopy, statusMsg, isGeneratingTeams, generateTeamsError, onSendToDiscord, teamsWebhookUrl }) => {
   const displayData = teams || result;
@@ -58,7 +59,7 @@ const TeamResults = ({ result, teams, onCopy, statusMsg, isGeneratingTeams, gene
                       <span className="text-[9px] font-bold text-slate-400 bg-slate-700/50 px-1.5 py-0.5 rounded w-12 text-center">
                         {p.assignedRole}
                       </span>
-                      <span className="font-medium truncate block text-xs">{p.displayName || p.name}</span>
+                      <span className="font-medium truncate block text-xs" style={{ color: getRankColor(p.mu) }}>{p.displayName || p.name}</span>
                     </div>
                     <span className="text-slate-500 font-mono text-[9px] group-hover:text-blue-400 transition-colors">
                       {p.mu?.toFixed(2)}
@@ -80,7 +81,7 @@ const TeamResults = ({ result, teams, onCopy, statusMsg, isGeneratingTeams, gene
                       <span className="text-[9px] font-bold text-slate-400 bg-slate-700/50 px-1.5 py-0.5 rounded w-12 text-center">
                         {p.assignedRole}
                       </span>
-                      <span className="font-medium truncate block text-xs">{p.displayName || p.name}</span>
+                      <span className="font-medium truncate block text-xs" style={{ color: getRankColor(p.mu) }}>{p.displayName || p.name}</span>
                     </div>
                     <span className="text-slate-500 font-mono text-[9px] group-hover:text-red-400 transition-colors">
                       {p.mu?.toFixed(2)}

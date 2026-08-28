@@ -47,3 +47,15 @@ export const RANK_DATA = [
 ];
 
 export const RANK_MAP = RANK_DATA.reduce((acc, r) => ({ ...acc, [r.name]: r.val }), {});
+
+export const getRankColor = (rating) => {
+  if (rating === undefined) rating = 1500;
+  // Find the rank where val <= rating and next rank's val > rating, or highest if above all.
+  for (let i = RANK_DATA.length - 1; i >= 0; i--) {
+    if (rating >= RANK_DATA[i].val) {
+      return RANK_DATA[i].color;
+    }
+  }
+  // fallback to lowest rank color (UNRANKED)
+  return RANK_DATA[0].color;
+};
